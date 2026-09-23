@@ -30,6 +30,7 @@ import {
   isSupabaseConfigured,
 } from '../../lib/supabase';
 import { EnquiryDetailModal } from './EnquiryDetailModal';
+import { ImageUploadInput } from '../../components/ImageUploadInput';
 import {
   LayoutDashboard,
   Inbox,
@@ -728,8 +729,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
             {/* Service Edit Modal */}
             {editingService && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-                <div className="max-w-lg w-full bg-neutral-900 border border-neutral-800 rounded-2xl p-6 space-y-4">
+                <div className="max-w-lg w-full bg-neutral-900 border border-neutral-800 rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
                   <h3 className="font-heading text-lg font-bold text-white">Edit Service: {editingService.name}</h3>
+
+                  <ImageUploadInput
+                    label="Service Photo / Showcase Image"
+                    value={editingService.image_url || ''}
+                    onChange={(url) => setEditingService({ ...editingService, image_url: url })}
+                    helperText="Upload a photo of your repairs/parts or enter an image URL"
+                  />
+
                   <div>
                     <label className="block text-xs text-neutral-400 mb-1">Description</label>
                     <textarea
@@ -788,8 +797,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
               <button
                 onClick={() => {
                   const newItem: GalleryItem = {
-                    id: 'gal-' + Date.now(),
-                    image_url: 'https://images.unsplash.com/photo-1544816155-12df9643f363?auto=format&fit=crop&w=600&q=80',
+                    id: 'gal-new-' + Date.now(),
+                    image_url: '',
                     title: 'New Trolley Part / Repair',
                     caption: 'Photographed at Sakil Bag Store, Sector 22, Noida',
                     category: 'Wheels',
@@ -799,11 +808,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                   };
                   setEditingGallery(newItem);
                 }}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 px-3.5 py-2 text-xs font-bold text-white"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-colors"
               >
                 <Plus className="h-4 w-4" />
-                <span>Add New Photo</span>
+                <span>Upload / Add Photo</span>
               </button>
+            </div>
+
+            {/* Quick Upload Dropzone Section */}
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 sm:p-5">
+              <ImageUploadInput
+                label="Quick Photo Upload"
+                value=""
+                onChange={(uploadedUrl) => {
+                  if (uploadedUrl) {
+                    const newItem: GalleryItem = {
+                      id: 'gal-new-' + Date.now(),
+                      image_url: uploadedUrl,
+                      title: 'Luggage Repair Photo',
+                      caption: 'Work executed at Sakil Bag Store, Sector 22, Noida',
+                      category: 'Wheels',
+                      alt_text: 'Trolley bag repair Noida Mohd Shakil',
+                      display_order: gallery.length + 1,
+                      active: true,
+                    };
+                    setEditingGallery(newItem);
+                  }
+                }}
+                helperText="Select or drag & drop any photograph from your device to quickly add it to your store gallery"
+              />
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -846,23 +879,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
             {/* Gallery Edit Modal */}
             {editingGallery && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-                <div className="max-w-lg w-full bg-neutral-900 border border-neutral-800 rounded-2xl p-6 space-y-4">
-                  <h3 className="font-heading text-lg font-bold text-white">Edit Gallery Photo</h3>
+                <div className="max-w-lg w-full bg-neutral-900 border border-neutral-800 rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+                  <h3 className="font-heading text-lg font-bold text-white">
+                    {editingGallery.id.startsWith('gal-new') ? 'Add New Gallery Photograph' : 'Edit Gallery Photo'}
+                  </h3>
+
+                  <ImageUploadInput
+                    label="Photograph (Workshop, Spare Parts, or Repairs)"
+                    value={editingGallery.image_url}
+                    onChange={(url) => setEditingGallery({ ...editingGallery, image_url: url })}
+                    helperText="Upload any camera photo or luggage repair shot directly from your device"
+                  />
+
                   <div>
                     <label className="block text-xs text-neutral-400 mb-1">Title</label>
                     <input
                       type="text"
                       value={editingGallery.title}
                       onChange={(e) => setEditingGallery({ ...editingGallery, title: e.target.value })}
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-neutral-400 mb-1">Image URL</label>
-                    <input
-                      type="text"
-                      value={editingGallery.image_url}
-                      onChange={(e) => setEditingGallery({ ...editingGallery, image_url: e.target.value })}
                       className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white"
                     />
                   </div>
@@ -884,7 +918,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs text-neutral-400 mb-1">Caption</label>
+                    <label className="block text-xs text-neutral-400 mb-1">Caption / Details</label>
                     <input
                       type="text"
                       value={editingGallery.caption || ''}
@@ -904,7 +938,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                         await saveGalleryItem(editingGallery);
                         await loadAllData();
                         setEditingGallery(null);
-                        triggerSaveAlert('Gallery updated');
+                        triggerSaveAlert('Gallery photo saved successfully');
                       }}
                       className="px-4 py-2 rounded-lg bg-orange-600 text-xs font-bold text-white"
                     >
