@@ -56,6 +56,12 @@ import {
   Trash2,
   Edit2,
   ExternalLink,
+  Copy,
+  Check,
+  Star,
+  Globe,
+  MapPin,
+  TrendingUp,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -93,6 +99,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [editingGallery, setEditingGallery] = useState<GalleryItem | null>(null);
   const [editingFaq, setEditingFaq] = useState<FAQItem | null>(null);
+  const [copiedReviewTemplate, setCopiedReviewTemplate] = useState(false);
+  const [copiedKeywordList, setCopiedKeywordList] = useState(false);
 
   const loadAllData = async () => {
     try {
@@ -1194,43 +1202,265 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
 
         {/* 7. SEO TAB */}
         {activeTab === 'seo' && (
-          <div className="space-y-6 max-w-3xl">
+          <div className="space-y-6 max-w-4xl">
             <div>
-              <h2 className="font-heading text-2xl font-bold text-white">
-                Search Engine Optimization (SEO)
-              </h2>
+              <div className="flex items-center gap-2">
+                <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400">
+                  <TrendingUp className="h-4 w-4" />
+                </span>
+                <h2 className="font-heading text-2xl font-bold text-white">
+                  How SAKIL BAG STORE Can Rank #1 on Google
+                </h2>
+              </div>
               <p className="text-xs text-neutral-400 mt-1">
-                Metadata, Google Search Console readiness, and keyword optimization
+                Complete local SEO strategy, Google Business Profile playbook, indexing steps, and WhatsApp review generator.
               </p>
             </div>
 
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-6 space-y-4">
-              <h3 className="font-heading text-base font-bold text-white">Homepage SEO Audit</h3>
-              <div className="space-y-3">
-                <div className="p-3 bg-neutral-950 rounded-xl border border-neutral-800">
-                  <div className="text-neutral-400 text-xs mb-1">Title Tag (59 chars - Optimal):</div>
-                  <div className="text-xs text-emerald-400 font-mono">SAKIL BAG STORE - Trolley Bag Repair & Parts Specialist Noida</div>
+            {/* Quick Status Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-400">On-Page Technical SEO</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                    100% READY
+                  </span>
                 </div>
+                <div className="text-lg font-bold text-white">Schema & Meta Tags</div>
+                <p className="text-[11px] text-neutral-400">LocalBusiness JSON-LD, FAQPage schema, geo-coordinates & sitemap configured.</p>
+              </div>
 
-                <div className="p-3 bg-neutral-950 rounded-xl border border-neutral-800">
-                  <div className="text-neutral-400 text-xs mb-1">Meta Description (142 chars - Optimal):</div>
-                  <div className="text-xs text-emerald-400 font-mono">Professional trolley bag repair, trolley wheels replacement, handles, locks, luggage repair and customized bags in Sector 22, Noida. Run by Mohd Shakil.</div>
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-400">Google Search Indexing</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    NEXT STEP
+                  </span>
                 </div>
+                <div className="text-lg font-bold text-white">Search Console</div>
+                <p className="text-[11px] text-neutral-400">Submit sitemap.xml to Google Search Console as soon as custom domain is live.</p>
+              </div>
 
-                <div className="p-3 bg-neutral-950 rounded-xl border border-neutral-800">
-                  <div className="text-neutral-400 text-xs mb-1">Canonical URL:</div>
-                  <div className="text-xs text-neutral-300 font-mono">https://sakilbagstore.com/</div>
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-neutral-400">Google Maps 3-Pack</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                    TOP PRIORITY
+                  </span>
+                </div>
+                <div className="text-lg font-bold text-white">Google Business Profile</div>
+                <p className="text-[11px] text-neutral-400">Collect 15-20 reviews mentioning "trolley wheel repair" & "Noida Sector 22".</p>
+              </div>
+            </div>
+
+            {/* 1-Click WhatsApp Review Request Generator */}
+            <div className="rounded-2xl border border-orange-500/30 bg-gradient-to-br from-orange-500/10 via-neutral-900/60 to-neutral-950 p-6 space-y-4">
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-orange-500/20 text-orange-400 text-xs font-semibold mb-1">
+                    <Star className="h-3.5 w-3.5 fill-orange-400" />
+                    #1 Ranking Secret for Local Shops
+                  </div>
+                  <h3 className="font-heading text-lg font-bold text-white">
+                    Customer Review WhatsApp Template
+                  </h3>
+                  <p className="text-xs text-neutral-300 max-w-xl">
+                    Google ranks stores higher when real customers leave reviews with keywords like <strong className="text-white">"trolley wheels", "fast repair", "Sector 22 Noida"</strong>. Send this WhatsApp message right after repairing a bag!
+                  </p>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-neutral-800">
-                <h4 className="text-xs font-semibold text-white mb-2">Technical SEO Files Available</h4>
+              <div className="p-4 rounded-xl bg-neutral-950/80 border border-neutral-800 text-xs text-neutral-200 font-mono space-y-2 select-all">
+                <p>
+                  "Namaste Sir/Madam 🙏 Thank you for choosing SAKIL BAG STORE in Sector 22 Noida for your trolley bag repair! If you liked our service, please support our local shop by sharing a quick 5-star review on Google: {settings?.google_business_profile_url || 'https://maps.google.com'} - Mohd Shakil (8383804752)"
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    const text = `Namaste Sir/Madam 🙏 Thank you for choosing SAKIL BAG STORE in Sector 22 Noida for your trolley bag repair! If you liked our service, please support our local shop by sharing a quick 5-star review on Google: ${settings?.google_business_profile_url || 'https://maps.google.com'} - Mohd Shakil (8383804752)`;
+                    navigator.clipboard.writeText(text);
+                    setCopiedReviewTemplate(true);
+                    setTimeout(() => setCopiedReviewTemplate(false), 2500);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-bold text-white transition-colors"
+                >
+                  {copiedReviewTemplate ? (
+                    <>
+                      <Check className="h-4 w-4 text-emerald-400" />
+                      <span>Copied to Clipboard!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4" />
+                      <span>Copy WhatsApp Review Message</span>
+                    </>
+                  )}
+                </button>
+
+                <a
+                  href={`https://wa.me/?text=${encodeURIComponent(
+                    `Namaste Sir/Madam 🙏 Thank you for choosing SAKIL BAG STORE in Sector 22 Noida for your trolley bag repair! If you liked our service, please support our local shop by sharing a quick 5-star review on Google: ${settings?.google_business_profile_url || 'https://maps.google.com'} - Mohd Shakil (8383804752)`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-neutral-200"
+                >
+                  <MessageSquare className="h-4 w-4 text-emerald-400" />
+                  <span>Open in WhatsApp</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Step-by-Step Blueprint */}
+            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-6 space-y-6">
+              <h3 className="font-heading text-base font-bold text-white flex items-center gap-2">
+                <span>The 5 Action Steps to Reach #1 on Google</span>
+              </h3>
+
+              <div className="space-y-4">
+                {/* Step 1 */}
+                <div className="flex gap-4 p-4 rounded-xl bg-neutral-950 border border-neutral-800/80">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-600/20 text-orange-400 font-bold text-sm">
+                    1
+                  </div>
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-white">Google Business Profile (Map Pack #1)</h4>
+                      <span className="text-[10px] uppercase font-bold text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">Highest Impact</span>
+                    </div>
+                    <p className="text-xs text-neutral-300">
+                      When someone in Noida searches <em>"trolley bag repair near me"</em> or <em>"trolley wheels repair Noida"</em>, Google displays the top 3 Google Maps listings first.
+                    </p>
+                    <ul className="text-xs text-neutral-400 list-disc list-inside space-y-1 pt-1">
+                      <li>Name must be exact: <strong className="text-white">SAKIL BAG STORE</strong> (avoid keyword stuffing the name).</li>
+                      <li>Primary category: <strong className="text-white">Luggage repair service</strong> (Secondary: Bag shop, Leather goods store).</li>
+                      <li>Exact address: <strong className="text-white">Chaura Raghunathpur, Sector 22, Noida, Uttar Pradesh 201307</strong>.</li>
+                      <li>Add Service areas: Sector 22, Sector 21, Sector 23, Sector 24, Sector 62, Indirapuram, Noida.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Step 2 */}
+                <div className="flex gap-4 p-4 rounded-xl bg-neutral-950 border border-neutral-800/80">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-600/20 text-blue-400 font-bold text-sm">
+                    2
+                  </div>
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-white">Submit Sitemap to Google Search Console</h4>
+                      <span className="text-[10px] uppercase font-bold text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded">Website Indexing</span>
+                    </div>
+                    <p className="text-xs text-neutral-300">
+                      As soon as your custom domain (e.g. sakilbagstore.com) is connected on Netlify:
+                    </p>
+                    <ol className="text-xs text-neutral-400 list-decimal list-inside space-y-1 pt-1">
+                      <li>Open <a href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer" className="text-orange-400 underline inline-flex items-center gap-0.5">Google Search Console <ExternalLink className="h-3 w-3 inline" /></a>.</li>
+                      <li>Add your property: <code className="bg-neutral-800 px-1 py-0.5 rounded text-neutral-200">https://sakilbagstore.com</code>.</li>
+                      <li>Go to <strong>Sitemaps</strong> in the left menu and enter: <code className="bg-neutral-800 px-1 py-0.5 rounded text-neutral-200">sitemap.xml</code>.</li>
+                      <li>Click <strong>Submit</strong>. Google will crawl all 13 service pages within 24–48 hours!</li>
+                    </ol>
+                  </div>
+                </div>
+
+                {/* Step 3 */}
+                <div className="flex gap-4 p-4 rounded-xl bg-neutral-950 border border-neutral-800/80">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-600/20 text-emerald-400 font-bold text-sm">
+                    3
+                  </div>
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-white">Get Real Photos of Wheel & Handle Repairs</h4>
+                      <span className="text-[10px] uppercase font-bold text-emerald-400 bg-emerald-400/10 px-2 py-0.5 rounded">Visual Trust</span>
+                    </div>
+                    <p className="text-xs text-neutral-300">
+                      Google algorithms prioritize stores that frequently upload photos. Take clear before & after photos whenever you repair a trolley bag:
+                    </p>
+                    <ul className="text-xs text-neutral-400 list-disc list-inside space-y-1 pt-1">
+                      <li>Upload 5–10 photos directly to your Google Business Profile each month.</li>
+                      <li>Upload those photos to your website Gallery using the <strong>Gallery Management</strong> tab in this admin dashboard.</li>
+                      <li>Google Vision AI scans the wheels and luggage in your photos to confirm you are an active repair shop.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* Step 4 */}
+                <div className="flex gap-4 p-4 rounded-xl bg-neutral-950 border border-neutral-800/80">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-purple-600/20 text-purple-400 font-bold text-sm">
+                    4
+                  </div>
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-white">Local Citations (NAP Consistency)</h4>
+                      <span className="text-[10px] uppercase font-bold text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded">Authority Signals</span>
+                    </div>
+                    <p className="text-xs text-neutral-300">
+                      List SAKIL BAG STORE with the exact same Name, Address, and Phone on major Indian business directories:
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      <span className="px-2.5 py-1 rounded-lg bg-neutral-800 text-[11px] text-neutral-300 font-semibold">Justdial Noida</span>
+                      <span className="px-2.5 py-1 rounded-lg bg-neutral-800 text-[11px] text-neutral-300 font-semibold">IndiaMART</span>
+                      <span className="px-2.5 py-1 rounded-lg bg-neutral-800 text-[11px] text-neutral-300 font-semibold">Sulekha</span>
+                      <span className="px-2.5 py-1 rounded-lg bg-neutral-800 text-[11px] text-neutral-300 font-semibold">TradeIndia</span>
+                      <span className="px-2.5 py-1 rounded-lg bg-neutral-800 text-[11px] text-neutral-300 font-semibold">Bing Places</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Step 5 */}
+                <div className="flex gap-4 p-4 rounded-xl bg-neutral-950 border border-neutral-800/80">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-amber-600/20 text-amber-400 font-bold text-sm">
+                    5
+                  </div>
+                  <div className="space-y-1.5 flex-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-white">Keyword Targeting in Place on Website</h4>
+                      <button
+                        onClick={() => {
+                          const kws = `trolley bag repair noida, trolley bag repair near me, trolley wheels replacement noida, trolley wheels shop noida sector 22, trolley handle repair noida, trolley lock repair noida, luggage bag repair noida, american tourister repair noida, samsonite trolley repair noida, VIP trolley repair noida, skybags repair noida, bag repair shop sector 22 noida, sakil bag store, mohd shakil bag repair`;
+                          navigator.clipboard.writeText(kws);
+                          setCopiedKeywordList(true);
+                          setTimeout(() => setCopiedKeywordList(false), 2000);
+                        }}
+                        className="text-xs text-orange-400 hover:underline inline-flex items-center gap-1"
+                      >
+                        {copiedKeywordList ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                        <span>{copiedKeywordList ? 'Copied' : 'Copy All Keywords'}</span>
+                      </button>
+                    </div>
+                    <p className="text-xs text-neutral-400">
+                      Your website code has already been engineered with targeted pages for these searches:
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px] text-neutral-300 font-mono">
+                      <div className="p-2 rounded bg-neutral-900 border border-neutral-800">/trolley-wheel-repair-noida</div>
+                      <div className="p-2 rounded bg-neutral-900 border border-neutral-800">/trolley-handle-repair-noida</div>
+                      <div className="p-2 rounded bg-neutral-900 border border-neutral-800">/trolley-bag-locks-noida</div>
+                      <div className="p-2 rounded bg-neutral-900 border border-neutral-800">/customized-bag-maker-noida</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Technical Links */}
+              <div className="pt-4 border-t border-neutral-800 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex gap-2">
                   <a href="/robots.txt" target="_blank" className="px-3 py-1.5 rounded-lg border border-neutral-700 bg-neutral-900 text-xs text-neutral-300 hover:text-white">
                     View robots.txt
                   </a>
                   <a href="/sitemap.xml" target="_blank" className="px-3 py-1.5 rounded-lg border border-neutral-700 bg-neutral-900 text-xs text-neutral-300 hover:text-white">
                     View sitemap.xml
+                  </a>
+                </div>
+                <div className="flex items-center gap-2">
+                  <a
+                    href="https://search.google.com/test/rich-results"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-neutral-400 hover:text-white"
+                  >
+                    <span>Test Schema with Google</span>
+                    <ExternalLink className="h-3 w-3" />
                   </a>
                 </div>
               </div>
