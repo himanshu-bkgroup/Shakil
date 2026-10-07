@@ -21,6 +21,7 @@ export interface BusinessSettings {
   instagram_url?: string;
   youtube_url?: string;
   logo_url?: string;
+  hero_image_url?: string;
   created_at?: string;
   updated_at?: string;
 }

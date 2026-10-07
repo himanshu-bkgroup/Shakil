@@ -287,6 +287,7 @@ export const DEFAULT_GALLERY: GalleryItem[] = [
 ];
 
 // Local state storage keys
+// Local state storage keys
 const STORAGE_KEYS = {
   SETTINGS: 'sakil_business_settings',
   SERVICES: 'sakil_services',
@@ -299,21 +300,119 @@ const STORAGE_KEYS = {
   ADMIN_AUTH: 'sakil_admin_logged_in',
 };
 
-// Storage Helpers
+// Zero-dependency IndexedDB helper for robust, quota-free storage (prevents photo QuotaExceeded errors)
+const DB_NAME = 'sakil_store_db';
+const DB_STORE = 'app_data';
+
+function openIndexedDB(): Promise<IDBDatabase | null> {
+  if (typeof window === 'undefined' || !window.indexedDB) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open(DB_NAME, 1);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(DB_STORE)) {
+          db.createObjectStore(DB_STORE);
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function idbGet<T>(key: string): Promise<T | null> {
+  const db = await openIndexedDB();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(DB_STORE, 'readonly');
+      const store = tx.objectStore(DB_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => resolve(req.result !== undefined ? req.result : null);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function idbSet<T>(key: string, value: T): Promise<void> {
+  const db = await openIndexedDB();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(DB_STORE, 'readwrite');
+      const store = tx.objectStore(DB_STORE);
+      store.put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
+// In-memory cache for ultra-fast, synchronous access
+const memoryCache: Record<string, any> = {};
+
 function loadStorage<T>(key: string, defaultValue: T): T {
+  if (memoryCache[key] !== undefined) {
+    return memoryCache[key];
+  }
   try {
     const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
-  } catch {
-    return defaultValue;
+    if (item) {
+      const parsed = JSON.parse(item);
+      memoryCache[key] = parsed;
+      return parsed;
+    }
+  } catch (err) {
+    // LocalStorage quota or access error
   }
+  return defaultValue;
 }
 
 function saveStorage<T>(key: string, value: T): void {
+  memoryCache[key] = value;
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch (err) {
-    console.error('Storage write error:', err);
+    // If localStorage quota is exceeded due to photos, IndexedDB still keeps it safely
+  }
+  // Persist to IndexedDB
+  idbSet(key, value).catch(() => {});
+}
+
+export async function getPersistentData<T>(key: string, defaultValue: T): Promise<T> {
+  if (memoryCache[key] !== undefined) {
+    return memoryCache[key];
+  }
+  // Try IndexedDB first
+  try {
+    const val = await idbGet<T>(key);
+    if (val !== null && val !== undefined) {
+      memoryCache[key] = val;
+      return val;
+    }
+  } catch (err) {
+    // fallback
+  }
+  // Fallback to localStorage
+  const localVal = loadStorage<T>(key, defaultValue);
+  memoryCache[key] = localVal;
+  return localVal;
+}
+
+export async function setPersistentData<T>(key: string, value: T): Promise<void> {
+  memoryCache[key] = value;
+  saveStorage(key, value);
+  await idbSet(key, value);
+  // Dispatch global broadcast event so App.tsx and all pages update instantly
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('sakil_data_updated', { detail: { key } }));
   }
 }
 
@@ -369,10 +468,10 @@ export async function fetchBusinessSettings(): Promise<BusinessSettings> {
       const { data, error } = await supabase.from('business_settings').select('*').limit(1).single();
       if (!error && data) return data;
     } catch (e) {
-      console.warn('Supabase fetch failed, falling back to local settings:', e);
+      console.warn('Supabase fetch failed, falling back to persistent settings:', e);
     }
   }
-  return loadStorage<BusinessSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_BUSINESS_SETTINGS);
+  return getPersistentData<BusinessSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_BUSINESS_SETTINGS);
 }
 
 export async function saveBusinessSettings(settings: Partial<BusinessSettings>): Promise<BusinessSettings> {
@@ -391,7 +490,7 @@ export async function saveBusinessSettings(settings: Partial<BusinessSettings>):
     }
   }
 
-  saveStorage(STORAGE_KEYS.SETTINGS, updated);
+  await setPersistentData(STORAGE_KEYS.SETTINGS, updated);
   return updated;
 }
 
@@ -404,7 +503,7 @@ export async function fetchServices(): Promise<Service[]> {
       console.warn('Supabase services fetch failed:', e);
     }
   }
-  return loadStorage<Service[]>(STORAGE_KEYS.SERVICES, DEFAULT_SERVICES);
+  return getPersistentData<Service[]>(STORAGE_KEYS.SERVICES, DEFAULT_SERVICES);
 }
 
 export async function saveService(service: Service): Promise<void> {
@@ -423,7 +522,7 @@ export async function saveService(service: Service): Promise<void> {
       console.warn('Supabase save service error:', e);
     }
   }
-  saveStorage(STORAGE_KEYS.SERVICES, services);
+  await setPersistentData(STORAGE_KEYS.SERVICES, services);
 }
 
 export async function deleteService(serviceId: string): Promise<void> {
@@ -436,7 +535,7 @@ export async function deleteService(serviceId: string): Promise<void> {
       console.warn('Supabase delete service error:', e);
     }
   }
-  saveStorage(STORAGE_KEYS.SERVICES, filtered);
+  await setPersistentData(STORAGE_KEYS.SERVICES, filtered);
 }
 
 export async function fetchEnquiries(): Promise<Enquiry[]> {
@@ -559,7 +658,7 @@ export async function fetchGallery(): Promise<GalleryItem[]> {
       console.warn('Supabase gallery fetch failed:', e);
     }
   }
-  return loadStorage<GalleryItem[]>(STORAGE_KEYS.GALLERY, DEFAULT_GALLERY);
+  return getPersistentData<GalleryItem[]>(STORAGE_KEYS.GALLERY, DEFAULT_GALLERY);
 }
 
 export async function saveGalleryItem(item: GalleryItem): Promise<void> {
@@ -577,7 +676,7 @@ export async function saveGalleryItem(item: GalleryItem): Promise<void> {
       console.warn('Supabase gallery upsert error:', e);
     }
   }
-  saveStorage(STORAGE_KEYS.GALLERY, gallery);
+  await setPersistentData(STORAGE_KEYS.GALLERY, gallery);
 }
 
 export async function deleteGalleryItem(itemId: string): Promise<void> {
@@ -590,7 +689,7 @@ export async function deleteGalleryItem(itemId: string): Promise<void> {
       console.warn('Supabase gallery delete error:', e);
     }
   }
-  saveStorage(STORAGE_KEYS.GALLERY, filtered);
+  await setPersistentData(STORAGE_KEYS.GALLERY, filtered);
 }
 
 export async function fetchFAQs(): Promise<FAQItem[]> {
@@ -602,7 +701,7 @@ export async function fetchFAQs(): Promise<FAQItem[]> {
       console.warn('Supabase faqs fetch failed:', e);
     }
   }
-  return loadStorage<FAQItem[]>(STORAGE_KEYS.FAQS, DEFAULT_FAQS);
+  return getPersistentData<FAQItem[]>(STORAGE_KEYS.FAQS, DEFAULT_FAQS);
 }
 
 export async function saveFAQItem(item: FAQItem): Promise<void> {
@@ -620,7 +719,7 @@ export async function saveFAQItem(item: FAQItem): Promise<void> {
       console.warn('Supabase faq upsert error:', e);
     }
   }
-  saveStorage(STORAGE_KEYS.FAQS, faqs);
+  await setPersistentData(STORAGE_KEYS.FAQS, faqs);
 }
 
 export async function deleteFAQItem(itemId: string): Promise<void> {
@@ -633,7 +732,7 @@ export async function deleteFAQItem(itemId: string): Promise<void> {
       console.warn('Supabase faq delete error:', e);
     }
   }
-  saveStorage(STORAGE_KEYS.FAQS, filtered);
+  await setPersistentData(STORAGE_KEYS.FAQS, filtered);
 }
 
 export async function trackAnalyticsEvent(event: Omit<AnalyticsEvent, 'id' | 'created_at'>): Promise<void> {

@@ -12,8 +12,9 @@ interface ImageUploadInputProps {
 
 /**
  * Resizes and compresses an image client-side to ensure fast loading and reliable saving.
+ * 960px @ 0.78 quality provides retina-sharp clarity at only ~50-80KB.
  */
-function compressImage(file: File, maxDim = 1280, quality = 0.84): Promise<string> {
+function compressImage(file: File, maxDim = 960, quality = 0.78): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error('Failed to read file'));

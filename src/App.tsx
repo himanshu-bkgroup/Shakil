@@ -46,27 +46,40 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Fetch initial business data
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const [sett, srvs, gal, faqList] = await Promise.all([
-          fetchBusinessSettings(),
-          fetchServices(),
-          fetchGallery(),
-          fetchFAQs(),
-        ]);
-        setSettings(sett);
-        setServices(srvs);
-        setGallery(gal);
-        setFaqs(faqList);
-      } catch (err) {
-        console.error('Failed to load initial data:', err);
-      } finally {
-        setLoading(false);
-      }
+  // Fetch and sync business data
+  const loadData = async () => {
+    try {
+      const [sett, srvs, gal, faqList] = await Promise.all([
+        fetchBusinessSettings(),
+        fetchServices(),
+        fetchGallery(),
+        fetchFAQs(),
+      ]);
+      setSettings(sett);
+      setServices(srvs);
+      setGallery(gal);
+      setFaqs(faqList);
+    } catch (err) {
+      console.error('Failed to load data:', err);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     loadData();
+
+    // Listen for data update events from Admin Dashboard
+    const handleDataUpdated = () => {
+      loadData();
+    };
+    window.addEventListener('sakil_data_updated', handleDataUpdated);
+    window.addEventListener('storage', handleDataUpdated);
+
+    return () => {
+      window.removeEventListener('sakil_data_updated', handleDataUpdated);
+      window.removeEventListener('storage', handleDataUpdated);
+    };
   }, []);
 
   // Update document title and meta description dynamically based on current path
@@ -134,6 +147,7 @@ export default function App() {
   const handleNavigate = (path: string) => {
     window.history.pushState({}, '', path);
     setCurrentPath(path);
+    loadData();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -212,6 +226,7 @@ export default function App() {
           <ServiceDetailPage
             slug={cleanPath}
             settings={settings}
+            services={services}
             onNavigate={handleNavigate}
           />
         ) : cleanPath === 'gallery' ? (

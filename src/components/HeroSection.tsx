@@ -132,7 +132,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <div className="relative rounded-2xl border border-neutral-800 bg-neutral-900/80 p-3 shadow-2xl backdrop-blur-sm group transform transition-transform duration-500 lg:group-hover:rotate-1">
               <div className="overflow-hidden rounded-xl relative">
                 <img
-                  src={IMAGES.hero}
+                  src={settings.hero_image_url || IMAGES.hero}
                   alt="Trolley Bag Repair Workshop Sakil Bag Store Noida"
                   referrerPolicy="no-referrer"
                   className="w-full h-80 sm:h-96 object-cover object-center filter brightness-95 transform transition-transform duration-700 group-hover:scale-105"

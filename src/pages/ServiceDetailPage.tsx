@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { MapPin, Phone, MessageSquare, ArrowLeft, Disc, MoveVertical, KeyRound, Wrench, ShieldCheck, CheckCircle2 } from 'lucide-react';
-import type { BusinessSettings } from '../types';
+import type { BusinessSettings, Service } from '../types';
 import { UniversalRequirementForm } from '../components/UniversalRequirementForm';
 import { buildWhatsAppUrl } from '../lib/whatsapp';
 import { trackAnalyticsEvent } from '../lib/supabase';
@@ -9,12 +9,14 @@ import { IMAGES } from '../lib/images';
 interface ServiceDetailPageProps {
   slug: string;
   settings: BusinessSettings;
+  services?: Service[];
   onNavigate: (path: string) => void;
 }
 
 export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
   slug,
   settings,
+  services,
   onNavigate,
 }) => {
   useEffect(() => {
@@ -26,16 +28,19 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
     });
   }, [slug]);
 
+  const matchingService = services?.find(s => s.slug === slug);
+  const customImage = matchingService?.image_url;
+
   // Content configuration for each exact route specified in prompt
   const getPageConfig = () => {
     switch (slug) {
       case 'trolley-wheel-repair-noida':
         return {
-          title: 'Trolley Wheel Repair & Replacement in Noida',
+          title: matchingService?.name || 'Trolley Wheel Repair & Replacement in Noida',
           seoTitle: 'Trolley Wheel Repair & Replacement in Noida | Sakil Bag Store',
-          h1: 'Trolley Wheel Repair & Replacement in Noida',
-          subtitle: 'Precision replacement wheels, dual spinner casters, bearings & axles for all luggage brands in Sector 22, Noida.',
-          heroImage: IMAGES.wheels,
+          h1: matchingService?.name || 'Trolley Wheel Repair & Replacement in Noida',
+          subtitle: matchingService?.description || 'Precision replacement wheels, dual spinner casters, bearings & axles for all luggage brands in Sector 22, Noida.',
+          heroImage: customImage || IMAGES.wheels,
           requirementCategory: 'Trolley Wheels',
           breadcrumbs: ['Home', 'Services', 'Trolley Wheels'],
           keyPoints: [
@@ -67,11 +72,11 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
 
       case 'trolley-handle-repair-noida':
         return {
-          title: 'Trolley Handle Repair & Replacement in Noida',
+          title: matchingService?.name || 'Trolley Handle Repair & Replacement in Noida',
           seoTitle: 'Trolley Handle Repair & Replacement in Noida | Sakil Bag Store',
-          h1: 'Trolley Handle Repair & Replacement in Noida',
-          subtitle: 'Telescopic pull-up handles, top carrying handles, side grip handles, and internal rod repairs.',
-          heroImage: IMAGES.handleLocks,
+          h1: matchingService?.name || 'Trolley Handle Repair & Replacement in Noida',
+          subtitle: matchingService?.description || 'Telescopic pull-up handles, top carrying handles, side grip handles, and internal rod repairs.',
+          heroImage: customImage || IMAGES.handleLocks,
           requirementCategory: 'Trolley Handle',
           breadcrumbs: ['Home', 'Services', 'Trolley Handle Repair'],
           keyPoints: [
@@ -103,11 +108,11 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
 
       case 'trolley-bag-repair-noida':
         return {
-          title: 'Trolley Bag Repair in Noida',
+          title: matchingService?.name || 'Trolley Bag Repair in Noida',
           seoTitle: 'Trolley Bag Repair in Noida | Sakil Bag Store',
-          h1: 'Trolley Bag Repair in Noida',
-          subtitle: 'Comprehensive luggage & trolley repair workshop in Sector 22, Noida run by Mohd Shakil.',
-          heroImage: IMAGES.hero,
+          h1: matchingService?.name || 'Trolley Bag Repair in Noida',
+          subtitle: matchingService?.description || 'Comprehensive luggage & trolley repair workshop in Sector 22, Noida run by Mohd Shakil.',
+          heroImage: customImage || IMAGES.hero,
           requirementCategory: 'Trolley Repair',
           breadcrumbs: ['Home', 'Services', 'Trolley Bag Repair'],
           keyPoints: [
@@ -139,11 +144,11 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
 
       case 'trolley-bag-locks-noida':
         return {
-          title: 'Trolley & Luggage Locks in Noida',
+          title: matchingService?.name || 'Trolley & Luggage Locks in Noida',
           seoTitle: 'Trolley & Luggage Locks in Noida | Sakil Bag Store',
-          h1: 'Trolley & Luggage Locks in Noida',
-          subtitle: 'Replacement combination locks, TSA-type hardware, zipper puller locks, and latches.',
-          heroImage: IMAGES.handleLocks,
+          h1: matchingService?.name || 'Trolley & Luggage Locks in Noida',
+          subtitle: matchingService?.description || 'Replacement combination locks, TSA-type hardware, zipper puller locks, and latches.',
+          heroImage: customImage || IMAGES.handleLocks,
           requirementCategory: 'Trolley Lock',
           breadcrumbs: ['Home', 'Services', 'Trolley Locks'],
           keyPoints: [
@@ -175,11 +180,11 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
 
       case 'trolley-parts-supplier-noida':
         return {
-          title: 'Trolley Parts Supplier in Noida',
+          title: matchingService?.name || 'Trolley Parts Supplier in Noida',
           seoTitle: 'Trolley Parts Supplier in Noida | Sakil Bag Store',
-          h1: 'Trolley Parts Supplier in Noida',
-          subtitle: 'Supplier of replacement trolley wheels, telescopic handles, locks, base studs, and spare components in Noida.',
-          heroImage: IMAGES.wheels,
+          h1: matchingService?.name || 'Trolley Parts Supplier in Noida',
+          subtitle: matchingService?.description || 'Supplier of replacement trolley wheels, telescopic handles, locks, base studs, and spare components in Noida.',
+          heroImage: customImage || IMAGES.wheels,
           requirementCategory: 'Trolley Parts',
           breadcrumbs: ['Home', 'Services', 'Trolley Parts Supplier'],
           keyPoints: [
@@ -211,11 +216,11 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
 
       case 'bag-repair-noida':
         return {
-          title: 'Bag Repair in Noida',
+          title: matchingService?.name || 'Bag Repair in Noida',
           seoTitle: 'Bag Repair in Noida | Sakil Bag Store',
-          h1: 'Bag Repair in Noida',
-          subtitle: 'Expert repair of backpacks, laptop bags, travel duffles, gym bags, zippers, and heavy stitching in Sector 22, Noida.',
-          heroImage: IMAGES.bagRepair,
+          h1: matchingService?.name || 'Bag Repair in Noida',
+          subtitle: matchingService?.description || 'Expert repair of backpacks, laptop bags, travel duffles, gym bags, zippers, and heavy stitching in Sector 22, Noida.',
+          heroImage: customImage || IMAGES.bagRepair,
           requirementCategory: 'Bag Repair',
           breadcrumbs: ['Home', 'Services', 'Bag Repair'],
           keyPoints: [
@@ -247,11 +252,11 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
 
       case 'luggage-repair-noida':
         return {
-          title: 'Luggage Repair in Noida',
+          title: matchingService?.name || 'Luggage Repair in Noida',
           seoTitle: 'Luggage Repair in Noida | Sakil Bag Store',
-          h1: 'Luggage Repair in Noida',
-          subtitle: 'Professional travel luggage repair: hard-shell suitcases, soft-sided spinners, wheels, handles, and locks.',
-          heroImage: IMAGES.hero,
+          h1: matchingService?.name || 'Luggage Repair in Noida',
+          subtitle: matchingService?.description || 'Professional travel luggage repair: hard-shell suitcases, soft-sided spinners, wheels, handles, and locks.',
+          heroImage: customImage || IMAGES.hero,
           requirementCategory: 'Luggage Repair',
           breadcrumbs: ['Home', 'Services', 'Luggage Repair'],
           keyPoints: [
@@ -284,11 +289,11 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
       case 'customized-bag-maker-noida':
       default:
         return {
-          title: 'Customized Bag Maker in Noida',
+          title: matchingService?.name || 'Customized Bag Maker in Noida',
           seoTitle: 'Customized Bag Maker in Noida | Sakil Bag Store',
-          h1: 'Customized Bag Maker in Noida',
-          subtitle: 'Custom bag fabrication enquiries for corporate events, promotional bags, school/college bags, and travel duffels.',
-          heroImage: IMAGES.customBags,
+          h1: matchingService?.name || 'Customized Bag Maker in Noida',
+          subtitle: matchingService?.description || 'Custom bag fabrication enquiries for corporate events, promotional bags, school/college bags, and travel duffels.',
+          heroImage: customImage || IMAGES.customBags,
           requirementCategory: 'Custom Bags',
           breadcrumbs: ['Home', 'Services', 'Customized Bags'],
           keyPoints: [

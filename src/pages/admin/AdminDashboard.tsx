@@ -775,7 +775,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                     <button
                       onClick={async () => {
                         await saveService(editingService);
-                        setServices(services.map(s => s.id === editingService.id ? editingService : s));
+                        await loadAllData();
                         setEditingService(null);
                         triggerSaveAlert('Service updated successfully');
                       }}
@@ -1176,6 +1176,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                     className="w-full rounded-lg border border-neutral-700 bg-neutral-950 px-3 py-2 text-xs text-white font-mono"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <ImageUploadInput
+                  label="Website Main Banner / Workshop Photo"
+                  value={settings.hero_image_url || ''}
+                  onChange={(url) => setSettings({ ...settings, hero_image_url: url })}
+                  helperText="Upload your store front or trolley repair workshop photo shown on the Homepage"
+                />
+
+                <ImageUploadInput
+                  label="Store Logo / Badge (Optional)"
+                  value={settings.logo_url || ''}
+                  onChange={(url) => setSettings({ ...settings, logo_url: url })}
+                  helperText="Upload your logo or shop board icon"
+                />
               </div>
 
               <div>

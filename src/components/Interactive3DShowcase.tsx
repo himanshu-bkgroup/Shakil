@@ -1,9 +1,18 @@
 import React, { useState } from 'react';
 import { Disc, MoveVertical, KeyRound, Wrench, ShieldCheck, HelpCircle } from 'lucide-react';
+import type { Service } from '../types';
 import { IMAGES } from '../lib/images';
 
-export const Interactive3DShowcase: React.FC<{ onSelectService: (service: string) => void }> = ({ onSelectService }) => {
+export const Interactive3DShowcase: React.FC<{
+  services?: Service[];
+  onSelectService: (service: string) => void;
+}> = ({ services, onSelectService }) => {
   const [activeTab, setActiveTab] = useState<'wheels' | 'handles' | 'locks' | 'bags'>('wheels');
+
+  const wheelImg = services?.find(s => s.slug.includes('wheel'))?.image_url || IMAGES.wheels;
+  const handleImg = services?.find(s => s.slug.includes('handle'))?.image_url || IMAGES.handleLocks;
+  const lockImg = services?.find(s => s.slug.includes('lock'))?.image_url || IMAGES.handleLocks;
+  const bagImg = services?.find(s => s.slug.includes('bag-repair'))?.image_url || IMAGES.bagRepair;
 
   const components = {
     wheels: {
@@ -17,7 +26,7 @@ export const Interactive3DShowcase: React.FC<{ onSelectService: (service: string
         { label: 'Bearing Type', value: 'Sealed smooth-glide ball bearings' },
       ],
       serviceTarget: 'Trolley Wheels',
-      image: IMAGES.wheels,
+      image: wheelImg,
       action: 'Check Wheel Compatibility',
     },
     handles: {
@@ -31,7 +40,7 @@ export const Interactive3DShowcase: React.FC<{ onSelectService: (service: string
         { label: 'Luggage Sizes', value: '20" Cabin, 24" Medium, 28" Check-in' },
       ],
       serviceTarget: 'Trolley Handle',
-      image: IMAGES.handleLocks,
+      image: handleImg,
       action: 'Check Handle Replacement',
     },
     locks: {
@@ -45,7 +54,7 @@ export const Interactive3DShowcase: React.FC<{ onSelectService: (service: string
         { label: 'Mounting', value: 'Flush mount & recessed rivet installation' },
       ],
       serviceTarget: 'Trolley Lock',
-      image: IMAGES.handleLocks,
+      image: lockImg,
       action: 'Check Lock Requirement',
     },
     bags: {
@@ -59,7 +68,7 @@ export const Interactive3DShowcase: React.FC<{ onSelectService: (service: string
         { label: 'Custom Bags', value: 'Custom fabrication & bulk order support' },
       ],
       serviceTarget: 'Bag Repair',
-      image: IMAGES.bagRepair,
+      image: bagImg,
       action: 'Send Bag Repair Requirement',
     },
   };

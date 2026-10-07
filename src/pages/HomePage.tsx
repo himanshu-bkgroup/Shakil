@@ -50,7 +50,7 @@ export const HomePage: React.FC<HomePageProps> = ({
       {/* 3. Interactive 3D Component Hardware Showcase */}
       <section className="py-16 sm:py-24 border-b border-neutral-800/80 bg-neutral-950">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <Interactive3DShowcase onSelectService={onOpenRequirementModal} />
+          <Interactive3DShowcase services={services} onSelectService={onOpenRequirementModal} />
         </div>
       </section>
 
