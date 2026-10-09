@@ -8,6 +8,7 @@ import {
   trackAnalyticsEvent,
   isAdminAuthenticated,
   setAdminAuthenticated,
+  adminLogout,
 } from './lib/supabase';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
@@ -179,10 +180,10 @@ export default function App() {
     }
     return (
       <AdminDashboard
-        onLogout={() => {
-          setAdminAuthenticated(false);
+        onLogout={async () => {
+          await adminLogout();
           setIsAdminLoggedIn(false);
-          handleNavigate('/');
+          handleNavigate('/admin');
         }}
         onViewWebsite={() => handleNavigate('/')}
       />

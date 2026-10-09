@@ -460,9 +460,58 @@ const INITIAL_DEMO_ENQUIRIES: Enquiry[] = [
   },
 ];
 
+// Clean up any legacy persistent admin logins immediately so unauthorized visitors are never auto-logged in
+if (typeof window !== 'undefined') {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.ADMIN_AUTH);
+  } catch {}
+}
+
+/**
+ * Uploads a base64 image to the server to save as a high-performance static asset (/uploads/...)
+ * Ensures that changes made in one browser are immediately visible on all other devices and browsers.
+ */
+export async function uploadImageToServer(base64OrUrl: string, name = 'photo'): Promise<string> {
+  if (!base64OrUrl) return '';
+  if (!base64OrUrl.startsWith('data:image')) {
+    return base64OrUrl;
+  }
+  try {
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: base64OrUrl, name }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.url) {
+        return data.url;
+      }
+    }
+  } catch (err) {
+    console.warn('Image upload to server failed, falling back to data URL:', err);
+  }
+  return base64OrUrl;
+}
+
 // Unified API Functions
 
 export async function fetchBusinessSettings(): Promise<BusinessSettings> {
+  // 1. Try server API first for real-time cross-browser consistency
+  try {
+    const res = await fetch('/api/settings');
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.settings && data.settings.business_name) {
+        setPersistentData(STORAGE_KEYS.SETTINGS, data.settings).catch(() => {});
+        return data.settings;
+      }
+    }
+  } catch (e) {
+    // server route offline or static mode
+  }
+
+  // 2. Try Supabase if configured
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase.from('business_settings').select('*').limit(1).single();
@@ -471,17 +520,44 @@ export async function fetchBusinessSettings(): Promise<BusinessSettings> {
       console.warn('Supabase fetch failed, falling back to persistent settings:', e);
     }
   }
+
+  // 3. Fallback to local storage / defaults
   return getPersistentData<BusinessSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_BUSINESS_SETTINGS);
 }
 
 export async function saveBusinessSettings(settings: Partial<BusinessSettings>): Promise<BusinessSettings> {
   const current = await fetchBusinessSettings();
+  
+  // Upload images to server if base64 to ensure cross-device visibility
+  let heroUrl = settings.hero_image_url;
+  let logoUrl = settings.logo_url;
+  if (heroUrl && heroUrl.startsWith('data:image')) {
+    heroUrl = await uploadImageToServer(heroUrl, 'hero_banner');
+  }
+  if (logoUrl && logoUrl.startsWith('data:image')) {
+    logoUrl = await uploadImageToServer(logoUrl, 'store_logo');
+  }
+
   const updated: BusinessSettings = {
     ...current,
     ...settings,
+    hero_image_url: heroUrl !== undefined ? heroUrl : current.hero_image_url,
+    logo_url: logoUrl !== undefined ? logoUrl : current.logo_url,
     updated_at: new Date().toISOString(),
   };
 
+  // 1. Persist to server backend immediately
+  try {
+    await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated),
+    });
+  } catch (e) {
+    console.warn('Server save settings error:', e);
+  }
+
+  // 2. Supabase if configured
   if (isSupabaseConfigured && supabase) {
     try {
       await supabase.from('business_settings').upsert(updated);
@@ -490,11 +566,27 @@ export async function saveBusinessSettings(settings: Partial<BusinessSettings>):
     }
   }
 
+  // 3. Save locally and broadcast
   await setPersistentData(STORAGE_KEYS.SETTINGS, updated);
   return updated;
 }
 
 export async function fetchServices(): Promise<Service[]> {
+  // 1. Try server backend first for cross-browser sync
+  try {
+    const res = await fetch('/api/services');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.services) && data.services.length > 0) {
+        setPersistentData(STORAGE_KEYS.SERVICES, data.services).catch(() => {});
+        return data.services;
+      }
+    }
+  } catch (e) {
+    // server route offline
+  }
+
+  // 2. Supabase if configured
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase.from('services').select('*').order('display_order', { ascending: true });
@@ -503,31 +595,65 @@ export async function fetchServices(): Promise<Service[]> {
       console.warn('Supabase services fetch failed:', e);
     }
   }
+
+  // 3. Fallback to local storage / defaults
   return getPersistentData<Service[]>(STORAGE_KEYS.SERVICES, DEFAULT_SERVICES);
 }
 
 export async function saveService(service: Service): Promise<void> {
-  const services = await fetchServices();
-  const index = services.findIndex(s => s.id === service.id);
-  if (index >= 0) {
-    services[index] = service;
-  } else {
-    services.push(service);
+  // If image is a newly uploaded base64 data URL, upload to server static files first
+  let targetImageUrl = service.image_url;
+  if (targetImageUrl && targetImageUrl.startsWith('data:image')) {
+    targetImageUrl = await uploadImageToServer(targetImageUrl, service.slug || service.name);
   }
 
+  const updatedService: Service = {
+    ...service,
+    image_url: targetImageUrl,
+  };
+
+  const services = await fetchServices();
+  const index = services.findIndex(s => s.id === updatedService.id);
+  if (index >= 0) {
+    services[index] = updatedService;
+  } else {
+    services.push(updatedService);
+  }
+
+  // 1. Persist to server backend immediately
+  try {
+    await fetch('/api/services', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedService),
+    });
+  } catch (e) {
+    console.warn('Server save service error:', e);
+  }
+
+  // 2. Supabase
   if (isSupabaseConfigured && supabase) {
     try {
-      await supabase.from('services').upsert(service);
+      await supabase.from('services').upsert(updatedService);
     } catch (e) {
       console.warn('Supabase save service error:', e);
     }
   }
+
+  // 3. Local storage and broadcast
   await setPersistentData(STORAGE_KEYS.SERVICES, services);
 }
 
 export async function deleteService(serviceId: string): Promise<void> {
   const services = await fetchServices();
   const filtered = services.filter(s => s.id !== serviceId);
+
+  try {
+    await fetch(`/api/services/${serviceId}`, { method: 'DELETE' });
+  } catch (e) {
+    console.warn('Server delete service error:', e);
+  }
+
   if (isSupabaseConfigured && supabase) {
     try {
       await supabase.from('services').delete().eq('id', serviceId);
@@ -539,6 +665,17 @@ export async function deleteService(serviceId: string): Promise<void> {
 }
 
 export async function fetchEnquiries(): Promise<Enquiry[]> {
+  try {
+    const res = await fetch('/api/enquiries');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.enquiries) && data.enquiries.length > 0) {
+        saveStorage(STORAGE_KEYS.ENQUIRIES, data.enquiries);
+        return data.enquiries;
+      }
+    }
+  } catch (e) {}
+
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase.from('enquiries').select('*').order('created_at', { ascending: false });
@@ -576,12 +713,22 @@ export async function submitEnquiry(payload: {
     created_at: new Date().toISOString(),
   };
 
-  // Try Supabase first
+  // 1. Send to server
+  try {
+    await fetch('/api/enquiries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newEnquiry),
+    });
+  } catch (e) {
+    console.warn('Server enquiry submit failed:', e);
+  }
+
+  // 2. Try Supabase first
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase.from('enquiries').insert([newEnquiry]).select().single();
       if (!error && data) {
-        // Notification
         await supabase.from('admin_notifications').insert({
           title: 'New Enquiry Received',
           message: `${newEnquiry.name} submitted ${newEnquiry.requirement_type}`,
@@ -601,7 +748,6 @@ export async function submitEnquiry(payload: {
   enquiries.unshift(newEnquiry);
   saveStorage(STORAGE_KEYS.ENQUIRIES, enquiries);
 
-  // Push notification locally
   const notifications = loadStorage<AdminNotification[]>(STORAGE_KEYS.NOTIFICATIONS, []);
   notifications.unshift({
     id: 'notif-' + Date.now(),
@@ -614,13 +760,19 @@ export async function submitEnquiry(payload: {
   });
   saveStorage(STORAGE_KEYS.NOTIFICATIONS, notifications);
 
-  // Trigger custom event for realtime simulation
   window.dispatchEvent(new CustomEvent('sakil_new_enquiry', { detail: newEnquiry }));
-
   return newEnquiry;
 }
 
 export async function updateEnquiry(enquiryId: string, updates: Partial<Enquiry>): Promise<void> {
+  try {
+    await fetch(`/api/enquiries/${enquiryId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    });
+  } catch (e) {}
+
   if (isSupabaseConfigured && supabase) {
     try {
       await supabase.from('enquiries').update(updates).eq('id', enquiryId);
@@ -638,6 +790,10 @@ export async function updateEnquiry(enquiryId: string, updates: Partial<Enquiry>
 }
 
 export async function deleteEnquiry(enquiryId: string): Promise<void> {
+  try {
+    await fetch(`/api/enquiries/${enquiryId}`, { method: 'DELETE' });
+  } catch (e) {}
+
   if (isSupabaseConfigured && supabase) {
     try {
       await supabase.from('enquiries').delete().eq('id', enquiryId);
@@ -650,6 +806,21 @@ export async function deleteEnquiry(enquiryId: string): Promise<void> {
 }
 
 export async function fetchGallery(): Promise<GalleryItem[]> {
+  // 1. Try server backend first for cross-browser sync
+  try {
+    const res = await fetch('/api/gallery');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.gallery) && data.gallery.length > 0) {
+        setPersistentData(STORAGE_KEYS.GALLERY, data.gallery).catch(() => {});
+        return data.gallery;
+      }
+    }
+  } catch (e) {
+    // server offline
+  }
+
+  // 2. Supabase
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase.from('gallery').select('*').order('display_order', { ascending: true });
@@ -658,30 +829,65 @@ export async function fetchGallery(): Promise<GalleryItem[]> {
       console.warn('Supabase gallery fetch failed:', e);
     }
   }
+
+  // 3. Fallback
   return getPersistentData<GalleryItem[]>(STORAGE_KEYS.GALLERY, DEFAULT_GALLERY);
 }
 
 export async function saveGalleryItem(item: GalleryItem): Promise<void> {
-  const gallery = await fetchGallery();
-  const index = gallery.findIndex(g => g.id === item.id);
-  if (index >= 0) {
-    gallery[index] = item;
-  } else {
-    gallery.unshift(item);
+  // If photo is newly uploaded base64 data URL, upload to server static files first
+  let targetImageUrl = item.image_url;
+  if (targetImageUrl && targetImageUrl.startsWith('data:image')) {
+    targetImageUrl = await uploadImageToServer(targetImageUrl, item.title || 'gallery');
   }
+
+  const updatedItem: GalleryItem = {
+    ...item,
+    image_url: targetImageUrl,
+  };
+
+  const gallery = await fetchGallery();
+  const index = gallery.findIndex(g => g.id === updatedItem.id);
+  if (index >= 0) {
+    gallery[index] = updatedItem;
+  } else {
+    gallery.unshift(updatedItem);
+  }
+
+  // 1. Persist to server backend immediately
+  try {
+    await fetch('/api/gallery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedItem),
+    });
+  } catch (e) {
+    console.warn('Server save gallery error:', e);
+  }
+
+  // 2. Supabase
   if (isSupabaseConfigured && supabase) {
     try {
-      await supabase.from('gallery').upsert(item);
+      await supabase.from('gallery').upsert(updatedItem);
     } catch (e) {
       console.warn('Supabase gallery upsert error:', e);
     }
   }
+
+  // 3. Local storage and broadcast
   await setPersistentData(STORAGE_KEYS.GALLERY, gallery);
 }
 
 export async function deleteGalleryItem(itemId: string): Promise<void> {
   const gallery = await fetchGallery();
   const filtered = gallery.filter(g => g.id !== itemId);
+
+  try {
+    await fetch(`/api/gallery/${itemId}`, { method: 'DELETE' });
+  } catch (e) {
+    console.warn('Server delete gallery error:', e);
+  }
+
   if (isSupabaseConfigured && supabase) {
     try {
       await supabase.from('gallery').delete().eq('id', itemId);
@@ -693,6 +899,17 @@ export async function deleteGalleryItem(itemId: string): Promise<void> {
 }
 
 export async function fetchFAQs(): Promise<FAQItem[]> {
+  try {
+    const res = await fetch('/api/faqs');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.faqs) && data.faqs.length > 0) {
+        setPersistentData(STORAGE_KEYS.FAQS, data.faqs).catch(() => {});
+        return data.faqs;
+      }
+    }
+  } catch (e) {}
+
   if (isSupabaseConfigured && supabase) {
     try {
       const { data, error } = await supabase.from('faq').select('*').order('display_order', { ascending: true });
@@ -712,6 +929,15 @@ export async function saveFAQItem(item: FAQItem): Promise<void> {
   } else {
     faqs.push(item);
   }
+
+  try {
+    await fetch('/api/faqs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(item),
+    });
+  } catch (e) {}
+
   if (isSupabaseConfigured && supabase) {
     try {
       await supabase.from('faq').upsert(item);
@@ -725,6 +951,11 @@ export async function saveFAQItem(item: FAQItem): Promise<void> {
 export async function deleteFAQItem(itemId: string): Promise<void> {
   const faqs = await fetchFAQs();
   const filtered = faqs.filter(f => f.id !== itemId);
+
+  try {
+    await fetch(`/api/faqs/${itemId}`, { method: 'DELETE' });
+  } catch (e) {}
+
   if (isSupabaseConfigured && supabase) {
     try {
       await supabase.from('faq').delete().eq('id', itemId);
@@ -805,18 +1036,96 @@ export async function markNotificationRead(id: string): Promise<void> {
   }
 }
 
-// Authentication helpers
+// Authentication helpers (Session-based, auto-expires, never auto-logins random visitors)
+const SESSION_AUTH_KEY = 'sakil_admin_session_auth';
+
 export function isAdminAuthenticated(): boolean {
+  if (typeof window === 'undefined') return false;
+
+  // Supabase Auth session check (if Supabase is active)
   if (isSupabaseConfigured && supabase) {
-    // If Supabase session is active
     const session = localStorage.getItem('sb-' + (supabaseUrl?.split('//')[1]?.split('.')[0] || '') + '-auth-token');
     if (session) return true;
   }
-  return localStorage.getItem(STORAGE_KEYS.ADMIN_AUTH) === 'true';
+
+  // Active browser session check (isolated to current tab/session; never persists indefinitely)
+  try {
+    const raw = sessionStorage.getItem(SESSION_AUTH_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.token) return false;
+
+    // Session auto-expires after 3 hours of inactivity for security
+    const age = Date.now() - (parsed.timestamp || 0);
+    if (age > 3 * 60 * 60 * 1000) {
+      sessionStorage.removeItem(SESSION_AUTH_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
-export function setAdminAuthenticated(status: boolean): void {
-  localStorage.setItem(STORAGE_KEYS.ADMIN_AUTH, status ? 'true' : 'false');
+export function setAdminAuthenticated(status: boolean, user?: any): void {
+  if (typeof window === 'undefined') return;
+
+  if (status) {
+    const payload = {
+      token: 'session_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2),
+      user: user || { email: 'shakilalam170@gmail.com', name: 'Mohd Shakil' },
+      timestamp: Date.now(),
+    };
+    sessionStorage.setItem(SESSION_AUTH_KEY, JSON.stringify(payload));
+  } else {
+    sessionStorage.removeItem(SESSION_AUTH_KEY);
+    try {
+      localStorage.removeItem(STORAGE_KEYS.ADMIN_AUTH);
+      localStorage.removeItem('sakil_admin_logged_in');
+    } catch {}
+  }
+}
+
+export async function adminLogin(email: string, pass: string): Promise<{ success: boolean; message?: string }> {
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanPass = pass.trim();
+
+  // 1. Try server verification first
+  try {
+    const res = await fetch('/api/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, password: cleanPass }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.success) {
+        setAdminAuthenticated(true, data.user);
+        return { success: true };
+      }
+    } else if (res.status === 401) {
+      const data = await res.json().catch(() => ({}));
+      return { success: false, message: data.message || 'Invalid email or password.' };
+    }
+  } catch (err) {
+    // Server offline or static fallback
+  }
+
+  // 2. Verified admin credentials fallback (Mohd Shakil credentials)
+  if (cleanEmail === 'shakilalam170@gmail.com' && cleanPass === 'Goods@sec22#') {
+    setAdminAuthenticated(true, { email: cleanEmail, name: 'Mohd Shakil' });
+    return { success: true };
+  }
+
+  return { success: false, message: 'Invalid admin credentials. Access restricted to store staff.' };
+}
+
+export async function adminLogout(): Promise<void> {
+  try {
+    await fetch('/api/admin/logout', { method: 'POST' });
+  } catch {}
+  setAdminAuthenticated(false);
 }
 
 // AI helpers for Admin Dashboard

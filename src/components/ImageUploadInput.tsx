@@ -90,7 +90,29 @@ export const ImageUploadInput: React.FC<ImageUploadInputProps> = ({
         size: `${sizeKb} KB (optimized)`,
       });
 
-      // 2. If Supabase is connected, optionally try to upload to Supabase Storage 'gallery' bucket
+      // 2. Upload to server static uploads directory for immediate multi-device & cross-browser access
+      try {
+        const uploadRes = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image: compressedDataUrl,
+            name: file.name,
+          }),
+        });
+        if (uploadRes.ok) {
+          const uploadData = await uploadRes.json();
+          if (uploadData?.url) {
+            onChange(uploadData.url);
+            setUploading(false);
+            return;
+          }
+        }
+      } catch (srvErr) {
+        console.warn('Server upload fallback:', srvErr);
+      }
+
+      // 3. If Supabase is connected, optionally try to upload to Supabase Storage 'gallery' bucket
       if (isSupabaseConfigured && supabase) {
         try {
           const fileExt = file.name.split('.').pop() || 'jpg';
@@ -115,7 +137,7 @@ export const ImageUploadInput: React.FC<ImageUploadInputProps> = ({
         }
       }
 
-      // 3. Set the optimized image DataURL directly
+      // 4. Set the optimized image DataURL directly as ultimate fallback
       onChange(compressedDataUrl);
     } catch (err: any) {
       setUploadError(err.message || 'Failed to process image');

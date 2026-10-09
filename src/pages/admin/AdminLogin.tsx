@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, Mail, AlertCircle, ArrowLeft, Shield } from 'lucide-react';
-import { isSupabaseConfigured, supabase, setAdminAuthenticated } from '../../lib/supabase';
+import { adminLogin, isSupabaseConfigured, supabase, setAdminAuthenticated } from '../../lib/supabase';
 
 interface AdminLoginProps {
   onSuccess: () => void;
@@ -20,56 +20,30 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess, onBackToSite 
 
     try {
       const cleanEmail = email.trim().toLowerCase();
+      const cleanPass = password;
 
-      // If Supabase Auth is configured and connected
+      // 1. If Supabase Auth is configured, try Supabase first
       if (isSupabaseConfigured && supabase) {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
-          password,
+          password: cleanPass,
         });
 
-        if (error) {
-          console.warn('Supabase auth response:', error.message);
-
-          // If Supabase reports email not confirmed, explain clearly or grant verified Shakil access
-          if (error.message.toLowerCase().includes('email not confirmed')) {
-            // If it's Mohd Shakil's admin email, authenticate and log in directly
-            if (cleanEmail === 'shakilalam170@gmail.com' && (password === 'Goods@sec22#' || password.length >= 6)) {
-              setAdminAuthenticated(true);
-              onSuccess();
-              return;
-            }
-            throw new Error('Email is registered in Supabase but not confirmed. In Supabase Dashboard -> Authentication -> Users, click the user and select "Confirm User" (or uncheck "Confirm email" in Auth Settings).');
-          }
-
-          // If it matches Mohd Shakil's credentials, authenticate seamlessly
-          if (cleanEmail === 'shakilalam170@gmail.com' && (password === 'Goods@sec22#' || password.length >= 6)) {
-            setAdminAuthenticated(true);
-            onSuccess();
-            return;
-          }
-
-          throw error;
-        }
-
-        if (data?.session || data?.user) {
-          setAdminAuthenticated(true);
+        if (!error && (data?.session || data?.user)) {
+          setAdminAuthenticated(true, { email: cleanEmail, name: 'Mohd Shakil' });
           onSuccess();
           return;
         }
       }
 
-      // Standalone / offline or verified admin check
-      if (
-        (cleanEmail === 'shakilalam170@gmail.com' && (password === 'Goods@sec22#' || password.length >= 6)) ||
-        (cleanEmail.includes('shakil') || cleanEmail.includes('sakil') || cleanEmail.includes('admin')) && password.length >= 6
-      ) {
-        setAdminAuthenticated(true);
+      // 2. Call adminLogin (verifies via /api/admin/login and Shakil store credentials)
+      const result = await adminLogin(cleanEmail, cleanPass);
+      if (result.success) {
         onSuccess();
         return;
       }
 
-      setErrorMsg('Invalid login credentials. Please verify your email and password.');
+      setErrorMsg(result.message || 'Invalid login credentials. Access restricted to store staff.');
     } catch (err: any) {
       setErrorMsg(err.message || 'Login failed. Please verify your credentials.');
     } finally {
