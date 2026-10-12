@@ -7,7 +7,7 @@ const CONFIG_FILE = path.join(DATA_DIR, 'db-config.json');
 
 let client: MongoClient | null = null;
 let db: Db | null = null;
-let currentDbName = 'sakil_bag_store';
+let currentDbName = 'shakil_store_app';
 let activeUri: string | null = null;
 let lastError: string | null = null;
 
@@ -20,13 +20,27 @@ export function maskUri(uri: string): string {
   }
 }
 
+// Extract database name from URI if present in path (e.g. mongodb.net/my_db?appName=...)
+function extractDbNameFromUri(uri: string): string | null {
+  try {
+    const match = uri.match(/mongodb(?:\+srv)?:\/\/[^/]+\/([^?&#\s]+)/);
+    if (match && match[1] && match[1].trim()) {
+      return match[1].trim();
+    }
+  } catch {}
+  return null;
+}
+
 // Load saved connection string from server-side config file if available
 function loadSavedUri(): { uri: string; dbName?: string } | null {
   try {
     if (fs.existsSync(CONFIG_FILE)) {
       const data = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf-8'));
       if (data && data.uri) {
-        return { uri: data.uri, dbName: data.dbName || 'sakil_bag_store' };
+        return {
+          uri: data.uri,
+          dbName: data.dbName || process.env.MONGODB_DB_NAME || 'shakil_store_app',
+        };
       }
     }
   } catch (err) {
@@ -39,7 +53,11 @@ function loadSavedUri(): { uri: string; dbName?: string } | null {
 function saveUriConfig(uri: string, dbName: string) {
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify({ uri, dbName, updated_at: new Date().toISOString() }, null, 2), 'utf-8');
+    fs.writeFileSync(
+      CONFIG_FILE,
+      JSON.stringify({ uri, dbName, updated_at: new Date().toISOString() }, null, 2),
+      'utf-8'
+    );
   } catch (err) {
     console.error('[MongoDB] Error saving db-config.json:', err);
   }
@@ -57,7 +75,7 @@ function clearUriConfig() {
 }
 
 export function isMongoConnected(): boolean {
-  return db !== null;
+  return db !== null && client !== null;
 }
 
 export function getMongoDb(): Db | null {
@@ -65,15 +83,25 @@ export function getMongoDb(): Db | null {
 }
 
 /**
- * Connect to MongoDB with timeout and validation
+ * Connect to MongoDB with robust pooling and timeout options
  */
-export async function connectMongo(uri: string, dbName: string = 'sakil_bag_store', saveConfig: boolean = true): Promise<{ success: boolean; message: string }> {
+export async function connectMongo(
+  uri: string,
+  dbName?: string,
+  saveConfig: boolean = true
+): Promise<{ success: boolean; message: string }> {
   try {
     if (!uri || !uri.trim()) {
       throw new Error('MongoDB URI cannot be empty');
     }
 
-    console.log(`[MongoDB] Attempting connection to MongoDB (${maskUri(uri)})...`);
+    const resolvedDbName =
+      (dbName && dbName.trim()) ||
+      extractDbNameFromUri(uri) ||
+      process.env.MONGODB_DB_NAME ||
+      'shakil_store_app';
+
+    console.log(`[MongoDB] Connecting to MongoDB (${maskUri(uri)})... Target DB: "${resolvedDbName}"`);
 
     // Close any previous client
     if (client) {
@@ -84,20 +112,34 @@ export async function connectMongo(uri: string, dbName: string = 'sakil_bag_stor
       db = null;
     }
 
+    // Production-ready MongoDB connection pooling options for cloud containers & serverless
     const newClient = new MongoClient(uri, {
-      serverSelectionTimeoutMS: 6000,
-      connectTimeoutMS: 6000,
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
+      socketTimeoutMS: 45000,
+      maxPoolSize: 20,
+      minPoolSize: 0, // 0 ensures idle sockets aren't forcibly kept open when idle
+      maxIdleTimeMS: 30000, // Recycle sockets every 30s to prevent stale cloud NAT drops
+      waitQueueTimeoutMS: 10000,
+      retryWrites: true,
+      retryReads: true,
+      heartbeatFrequencyMS: 10000,
+    });
+
+    // Connection lifecycle logging
+    newClient.on('connectionPoolCleared', (ev: any) => {
+      console.log(`[MongoDB] Connection pool refreshed for ${ev?.address || 'cluster'}`);
     });
 
     await newClient.connect();
 
     // Verify connection with ping
-    const testDb = newClient.db(dbName || 'sakil_bag_store');
+    const testDb = newClient.db(resolvedDbName);
     await testDb.command({ ping: 1 });
 
     client = newClient;
     db = testDb;
-    currentDbName = dbName || 'sakil_bag_store';
+    currentDbName = resolvedDbName;
     activeUri = uri;
     lastError = null;
 
@@ -139,21 +181,75 @@ export async function disconnectMongo(): Promise<{ success: boolean; message: st
  */
 export async function initMongo(): Promise<void> {
   const envUri = process.env.MONGODB_URI;
-  const envDb = process.env.MONGODB_DB_NAME || 'sakil_bag_store';
+  const saved = loadSavedUri();
+  const envDb =
+    process.env.MONGODB_DB_NAME ||
+    saved?.dbName ||
+    (envUri ? extractDbNameFromUri(envUri) : null) ||
+    'shakil_store_app';
 
   if (envUri) {
     const res = await connectMongo(envUri, envDb, false);
     if (res.success) return;
   }
 
-  const saved = loadSavedUri();
   if (saved && saved.uri) {
-    await connectMongo(saved.uri, saved.dbName || 'sakil_bag_store', false);
+    await connectMongo(saved.uri, saved.dbName || envDb, false);
   }
 }
 
 /**
- * Fetch database status and collection counts
+ * Resilient query wrapper that automatically retries PoolClearedError & network hiccups
+ */
+async function safeMongoExecute<T>(
+  operation: (database: Db) => Promise<T>,
+  fallback: T,
+  opName: string
+): Promise<T> {
+  if (!db || !client) return fallback;
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      return await operation(db);
+    } catch (err: any) {
+      const errName = err?.name || '';
+      const errMsg = err?.message || '';
+      const isPoolOrTransient =
+        errName === 'MongoPoolClearedError' ||
+        errName === 'PoolClearedError' ||
+        errName === 'MongoNetworkTimeoutError' ||
+        errName === 'MongoServerSelectionError' ||
+        errName === 'MongoNetworkError' ||
+        errName === 'MongoWaitQueueTimeoutError' ||
+        errMsg.includes('Connection pool') ||
+        errMsg.includes('timed out') ||
+        errMsg.includes('topology was destroyed') ||
+        errMsg.includes('pool was cleared');
+
+      if (attempt === 1 && isPoolOrTransient) {
+        // Pool is actively recreating or reconnecting; wait 200ms and retry
+        await new Promise((r) => setTimeout(r, 200));
+        continue;
+      }
+
+      console.warn(`[MongoDB] ${opName} note: ${errMsg || errName}. Safely utilizing cached store.`);
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+let cachedCounts: {
+  services: number;
+  gallery: number;
+  enquiries: number;
+  faqs: number;
+  notifications: number;
+} | null = null;
+let lastCountsFetchTime = 0;
+
+/**
+ * Fetch database status and collection counts safely without blocking
  */
 export async function getDatabaseStatus(): Promise<{
   connected: boolean;
@@ -169,7 +265,7 @@ export async function getDatabaseStatus(): Promise<{
   };
   lastError: string | null;
 }> {
-  if (!db) {
+  if (!db || !client) {
     return {
       connected: false,
       type: 'file',
@@ -186,33 +282,49 @@ export async function getDatabaseStatus(): Promise<{
     };
   }
 
-  try {
-    const [services, gallery, enquiries, faqs, notifications] = await Promise.all([
-      db.collection('services').countDocuments().catch(() => 0),
-      db.collection('gallery').countDocuments().catch(() => 0),
-      db.collection('enquiries').countDocuments().catch(() => 0),
-      db.collection('faqs').countDocuments().catch(() => 0),
-      db.collection('notifications').countDocuments().catch(() => 0),
-    ]);
-
+  // Use cached counts if fresh (within 15 seconds) to avoid redundant network roundtrips
+  if (cachedCounts && Date.now() - lastCountsFetchTime < 15000) {
     return {
       connected: true,
       type: 'mongodb',
       databaseName: currentDbName,
       maskedUri: activeUri ? maskUri(activeUri) : '',
-      counts: {
+      counts: cachedCounts,
+      lastError: null,
+    };
+  }
+
+  return safeMongoExecute(
+    async (database) => {
+      const [services, gallery, enquiries, faqs, notifications] = await Promise.all([
+        database.collection('services').countDocuments().catch(() => 0),
+        database.collection('gallery').countDocuments().catch(() => 0),
+        database.collection('enquiries').countDocuments().catch(() => 0),
+        database.collection('faqs').countDocuments().catch(() => 0),
+        database.collection('notifications').countDocuments().catch(() => 0),
+      ]);
+
+      cachedCounts = {
         services,
         gallery,
         enquiries,
         faqs,
         notifications,
-      },
-      lastError: null,
-    };
-  } catch (err: any) {
-    return {
+      };
+      lastCountsFetchTime = Date.now();
+
+      return {
+        connected: true,
+        type: 'mongodb' as const,
+        databaseName: currentDbName,
+        maskedUri: activeUri ? maskUri(activeUri) : '',
+        counts: cachedCounts,
+        lastError: null,
+      };
+    },
+    {
       connected: false,
-      type: 'file',
+      type: 'file' as const,
       databaseName: currentDbName,
       maskedUri: activeUri ? maskUri(activeUri) : '',
       counts: {
@@ -222,9 +334,10 @@ export async function getDatabaseStatus(): Promise<{
         faqs: 0,
         notifications: 0,
       },
-      lastError: err.message,
-    };
-  }
+      lastError,
+    },
+    'getDatabaseStatus'
+  );
 }
 
 /**
@@ -238,8 +351,9 @@ export async function syncStoreToMongo(store: any): Promise<{ success: boolean; 
     if (store.settings) {
       const cleanSettings = { ...store.settings };
       delete cleanSettings._id;
+      const targetId = cleanSettings.id || 'sakil-default-settings';
       await db.collection('settings').updateOne(
-        { _id: 'business_settings' as any },
+        { $or: [{ id: targetId }, { _id: targetId as any }, { _id: 'business_settings' as any }] },
         { $set: cleanSettings },
         { upsert: true }
       );
@@ -317,215 +431,235 @@ export async function syncStoreToMongo(store: any): Promise<{ success: boolean; 
 }
 
 // -----------------------------------------------------------------------------
-// MongoDB Read & Write helpers
+// Resilient MongoDB Read & Write helpers
 // -----------------------------------------------------------------------------
 
 export async function mongoGetSettings(): Promise<any | null> {
-  if (!db) return null;
-  try {
-    const doc = await db.collection('settings').findOne({ _id: 'business_settings' as any });
-    if (doc) {
-      const { _id, ...rest } = doc;
-      return rest;
-    }
-  } catch (err) {
-    console.error('[MongoDB] mongoGetSettings error:', err);
-  }
-  return null;
+  return safeMongoExecute(
+    async (database) => {
+      const doc = await database.collection('settings').findOne({
+        $or: [
+          { id: 'sakil-default-settings' },
+          { id: 'admin-settings' },
+          { _id: 'sakil-default-settings' as any },
+          { _id: 'business_settings' as any },
+          {},
+        ],
+      });
+      if (doc) {
+        const { _id, ...rest } = doc;
+        return rest;
+      }
+      return null;
+    },
+    null,
+    'mongoGetSettings'
+  );
 }
 
 export async function mongoSaveSettings(settings: any): Promise<any> {
-  if (!db) return settings;
-  try {
-    const clean = { ...settings, updated_at: new Date().toISOString() };
-    delete clean._id;
-    await db.collection('settings').updateOne(
-      { _id: 'business_settings' as any },
-      { $set: clean },
-      { upsert: true }
-    );
-    return clean;
-  } catch (err) {
-    console.error('[MongoDB] mongoSaveSettings error:', err);
-    return settings;
-  }
+  return safeMongoExecute(
+    async (database) => {
+      const clean = { ...settings, updated_at: new Date().toISOString() };
+      delete clean._id;
+      const targetId = clean.id || 'sakil-default-settings';
+      await database.collection('settings').updateOne(
+        { $or: [{ id: targetId }, { _id: targetId as any }, { _id: 'business_settings' as any }] },
+        { $set: clean },
+        { upsert: true }
+      );
+      return clean;
+    },
+    settings,
+    'mongoSaveSettings'
+  );
 }
 
 export async function mongoGetServices(): Promise<any[] | null> {
-  if (!db) return null;
-  try {
-    const docs = await db.collection('services').find({}).sort({ display_order: 1 }).toArray();
-    return docs.map(({ _id, ...s }) => s);
-  } catch (err) {
-    console.error('[MongoDB] mongoGetServices error:', err);
-    return null;
-  }
+  return safeMongoExecute(
+    async (database) => {
+      const docs = await database.collection('services').find({}).sort({ display_order: 1 }).toArray();
+      return docs.map(({ _id, ...s }) => s);
+    },
+    null,
+    'mongoGetServices'
+  );
 }
 
 export async function mongoSaveServices(services: any[] | any): Promise<void> {
-  if (!db) return;
-  try {
-    if (Array.isArray(services)) {
-      for (const s of services) {
-        const clean = { ...s };
+  await safeMongoExecute(
+    async (database) => {
+      if (Array.isArray(services)) {
+        for (const s of services) {
+          const clean = { ...s };
+          delete clean._id;
+          await database.collection('services').updateOne({ id: s.id }, { $set: clean }, { upsert: true });
+        }
+      } else if (services && services.id) {
+        const clean = { ...services };
         delete clean._id;
-        await db.collection('services').updateOne({ id: s.id }, { $set: clean }, { upsert: true });
+        await database.collection('services').updateOne({ id: services.id }, { $set: clean }, { upsert: true });
       }
-    } else if (services && services.id) {
-      const clean = { ...services };
-      delete clean._id;
-      await db.collection('services').updateOne({ id: services.id }, { $set: clean }, { upsert: true });
-    }
-  } catch (err) {
-    console.error('[MongoDB] mongoSaveServices error:', err);
-  }
+    },
+    undefined,
+    'mongoSaveServices'
+  );
 }
 
 export async function mongoDeleteService(id: string): Promise<void> {
-  if (!db) return;
-  try {
-    await db.collection('services').deleteOne({ id });
-  } catch (err) {
-    console.error('[MongoDB] mongoDeleteService error:', err);
-  }
+  await safeMongoExecute(
+    async (database) => {
+      await database.collection('services').deleteOne({ id });
+    },
+    undefined,
+    'mongoDeleteService'
+  );
 }
 
 export async function mongoGetGallery(): Promise<any[] | null> {
-  if (!db) return null;
-  try {
-    const docs = await db.collection('gallery').find({}).sort({ display_order: 1 }).toArray();
-    return docs.map(({ _id, ...g }) => g);
-  } catch (err) {
-    console.error('[MongoDB] mongoGetGallery error:', err);
-    return null;
-  }
+  return safeMongoExecute(
+    async (database) => {
+      const docs = await database.collection('gallery').find({}).sort({ display_order: 1 }).toArray();
+      return docs.map(({ _id, ...g }) => g);
+    },
+    null,
+    'mongoGetGallery'
+  );
 }
 
 export async function mongoSaveGallery(gallery: any[] | any): Promise<void> {
-  if (!db) return;
-  try {
-    if (Array.isArray(gallery)) {
-      for (const g of gallery) {
-        const clean = { ...g };
+  await safeMongoExecute(
+    async (database) => {
+      if (Array.isArray(gallery)) {
+        for (const g of gallery) {
+          const clean = { ...g };
+          delete clean._id;
+          await database.collection('gallery').updateOne({ id: g.id }, { $set: clean }, { upsert: true });
+        }
+      } else if (gallery && gallery.id) {
+        const clean = { ...gallery };
         delete clean._id;
-        await db.collection('gallery').updateOne({ id: g.id }, { $set: clean }, { upsert: true });
+        await database.collection('gallery').updateOne({ id: gallery.id }, { $set: clean }, { upsert: true });
       }
-    } else if (gallery && gallery.id) {
-      const clean = { ...gallery };
-      delete clean._id;
-      await db.collection('gallery').updateOne({ id: gallery.id }, { $set: clean }, { upsert: true });
-    }
-  } catch (err) {
-    console.error('[MongoDB] mongoSaveGallery error:', err);
-  }
+    },
+    undefined,
+    'mongoSaveGallery'
+  );
 }
 
 export async function mongoDeleteGallery(id: string): Promise<void> {
-  if (!db) return;
-  try {
-    await db.collection('gallery').deleteOne({ id });
-  } catch (err) {
-    console.error('[MongoDB] mongoDeleteGallery error:', err);
-  }
+  await safeMongoExecute(
+    async (database) => {
+      await database.collection('gallery').deleteOne({ id });
+    },
+    undefined,
+    'mongoDeleteGallery'
+  );
 }
 
 export async function mongoGetFaqs(): Promise<any[] | null> {
-  if (!db) return null;
-  try {
-    const docs = await db.collection('faqs').find({}).sort({ display_order: 1 }).toArray();
-    return docs.map(({ _id, ...f }) => f);
-  } catch (err) {
-    console.error('[MongoDB] mongoGetFaqs error:', err);
-    return null;
-  }
+  return safeMongoExecute(
+    async (database) => {
+      const docs = await database.collection('faqs').find({}).sort({ display_order: 1 }).toArray();
+      return docs.map(({ _id, ...f }) => f);
+    },
+    null,
+    'mongoGetFaqs'
+  );
 }
 
 export async function mongoSaveFaqs(faqs: any[] | any): Promise<void> {
-  if (!db) return;
-  try {
-    if (Array.isArray(faqs)) {
-      for (const f of faqs) {
-        const clean = { ...f };
+  await safeMongoExecute(
+    async (database) => {
+      if (Array.isArray(faqs)) {
+        for (const f of faqs) {
+          const clean = { ...f };
+          delete clean._id;
+          await database.collection('faqs').updateOne({ id: f.id }, { $set: clean }, { upsert: true });
+        }
+      } else if (faqs && faqs.id) {
+        const clean = { ...faqs };
         delete clean._id;
-        await db.collection('faqs').updateOne({ id: f.id }, { $set: clean }, { upsert: true });
+        await database.collection('faqs').updateOne({ id: faqs.id }, { $set: clean }, { upsert: true });
       }
-    } else if (faqs && faqs.id) {
-      const clean = { ...faqs };
-      delete clean._id;
-      await db.collection('faqs').updateOne({ id: faqs.id }, { $set: clean }, { upsert: true });
-    }
-  } catch (err) {
-    console.error('[MongoDB] mongoSaveFaqs error:', err);
-  }
+    },
+    undefined,
+    'mongoSaveFaqs'
+  );
 }
 
 export async function mongoDeleteFaq(id: string): Promise<void> {
-  if (!db) return;
-  try {
-    await db.collection('faqs').deleteOne({ id });
-  } catch (err) {
-    console.error('[MongoDB] mongoDeleteFaq error:', err);
-  }
+  await safeMongoExecute(
+    async (database) => {
+      await database.collection('faqs').deleteOne({ id });
+    },
+    undefined,
+    'mongoDeleteFaq'
+  );
 }
 
 export async function mongoGetEnquiries(): Promise<any[] | null> {
-  if (!db) return null;
-  try {
-    const docs = await db.collection('enquiries').find({}).sort({ created_at: -1 }).toArray();
-    return docs.map(({ _id, ...e }) => e);
-  } catch (err) {
-    console.error('[MongoDB] mongoGetEnquiries error:', err);
-    return null;
-  }
+  return safeMongoExecute(
+    async (database) => {
+      const docs = await database.collection('enquiries').find({}).sort({ created_at: -1 }).toArray();
+      return docs.map(({ _id, ...e }) => e);
+    },
+    null,
+    'mongoGetEnquiries'
+  );
 }
 
 export async function mongoSaveEnquiry(enquiry: any): Promise<void> {
-  if (!db) return;
-  try {
-    const clean = { ...enquiry };
-    delete clean._id;
-    await db.collection('enquiries').updateOne({ id: enquiry.id }, { $set: clean }, { upsert: true });
-  } catch (err) {
-    console.error('[MongoDB] mongoSaveEnquiry error:', err);
-  }
+  await safeMongoExecute(
+    async (database) => {
+      const clean = { ...enquiry };
+      delete clean._id;
+      await database.collection('enquiries').updateOne({ id: enquiry.id }, { $set: clean }, { upsert: true });
+    },
+    undefined,
+    'mongoSaveEnquiry'
+  );
 }
 
 export async function mongoDeleteEnquiry(id: string): Promise<void> {
-  if (!db) return;
-  try {
-    await db.collection('enquiries').deleteOne({ id });
-  } catch (err) {
-    console.error('[MongoDB] mongoDeleteEnquiry error:', err);
-  }
+  await safeMongoExecute(
+    async (database) => {
+      await database.collection('enquiries').deleteOne({ id });
+    },
+    undefined,
+    'mongoDeleteEnquiry'
+  );
 }
 
 export async function mongoGetNotifications(): Promise<any[] | null> {
-  if (!db) return null;
-  try {
-    const docs = await db.collection('notifications').find({}).sort({ created_at: -1 }).toArray();
-    return docs.map(({ _id, ...n }) => n);
-  } catch (err) {
-    console.error('[MongoDB] mongoGetNotifications error:', err);
-    return null;
-  }
+  return safeMongoExecute(
+    async (database) => {
+      const docs = await database.collection('notifications').find({}).sort({ created_at: -1 }).toArray();
+      return docs.map(({ _id, ...n }) => n);
+    },
+    null,
+    'mongoGetNotifications'
+  );
 }
 
 export async function mongoSaveNotification(notification: any): Promise<void> {
-  if (!db) return;
-  try {
-    const clean = { ...notification };
-    delete clean._id;
-    await db.collection('notifications').updateOne({ id: notification.id }, { $set: clean }, { upsert: true });
-  } catch (err) {
-    console.error('[MongoDB] mongoSaveNotification error:', err);
-  }
+  await safeMongoExecute(
+    async (database) => {
+      const clean = { ...notification };
+      delete clean._id;
+      await database.collection('notifications').updateOne({ id: notification.id }, { $set: clean }, { upsert: true });
+    },
+    undefined,
+    'mongoSaveNotification'
+  );
 }
 
 export async function mongoMarkNotificationRead(id: string): Promise<void> {
-  if (!db) return;
-  try {
-    await db.collection('notifications').updateOne({ id }, { $set: { read: true } });
-  } catch (err) {
-    console.error('[MongoDB] mongoMarkNotificationRead error:', err);
-  }
+  await safeMongoExecute(
+    async (database) => {
+      await database.collection('notifications').updateOne({ id }, { $set: { read: true } });
+    },
+    undefined,
+    'mongoMarkNotificationRead'
+  );
 }

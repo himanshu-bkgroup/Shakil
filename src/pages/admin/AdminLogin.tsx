@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, Mail, AlertCircle, ArrowLeft, Shield } from 'lucide-react';
-import { adminLogin, isSupabaseConfigured, supabase, setAdminAuthenticated } from '../../lib/supabase';
+import { adminLogin, setAdminAuthenticated } from '../../lib/supabase';
 
 interface AdminLoginProps {
   onSuccess: () => void;
@@ -22,21 +22,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onSuccess, onBackToSite 
       const cleanEmail = email.trim().toLowerCase();
       const cleanPass = password;
 
-      // 1. If Supabase Auth is configured, try Supabase first
-      if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password: cleanPass,
-        });
-
-        if (!error && (data?.session || data?.user)) {
-          setAdminAuthenticated(true, { email: cleanEmail, name: 'Mohd Shakil' });
-          onSuccess();
-          return;
-        }
-      }
-
-      // 2. Call adminLogin (verifies via /api/admin/login and Shakil store credentials)
+      // Verify via /api/admin/login and Shakil store credentials
       const result = await adminLogin(cleanEmail, cleanPass);
       if (result.success) {
         onSuccess();

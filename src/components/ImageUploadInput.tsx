@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, Link as LinkIcon, X, Check, Image as ImageIcon, RefreshCw } from 'lucide-react';
-import { isSupabaseConfigured, supabase } from '../lib/supabase';
 
 interface ImageUploadInputProps {
   label?: string;
@@ -112,32 +111,7 @@ export const ImageUploadInput: React.FC<ImageUploadInputProps> = ({
         console.warn('Server upload fallback:', srvErr);
       }
 
-      // 3. If Supabase is connected, optionally try to upload to Supabase Storage 'gallery' bucket
-      if (isSupabaseConfigured && supabase) {
-        try {
-          const fileExt = file.name.split('.').pop() || 'jpg';
-          const fileName = `uploads/${Date.now()}-${Math.random().toString(36).substring(2, 9)}.${fileExt}`;
-          const { data, error } = await supabase.storage
-            .from('gallery')
-            .upload(fileName, file, { upsert: true });
-
-          if (!error && data?.path) {
-            const { data: publicUrlData } = supabase.storage
-              .from('gallery')
-              .getPublicUrl(fileName);
-
-            if (publicUrlData?.publicUrl) {
-              onChange(publicUrlData.publicUrl);
-              setUploading(false);
-              return;
-            }
-          }
-        } catch (storageErr) {
-          console.warn('Supabase storage upload fallback to optimized DataURL:', storageErr);
-        }
-      }
-
-      // 4. Set the optimized image DataURL directly as ultimate fallback
+      // 3. Set the optimized image DataURL directly as reliable fallback
       onChange(compressedDataUrl);
     } catch (err: any) {
       setUploadError(err.message || 'Failed to process image');

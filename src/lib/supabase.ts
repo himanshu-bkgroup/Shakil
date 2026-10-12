@@ -1,4 +1,3 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type {
   BusinessSettings,
   Service,
@@ -11,19 +10,47 @@ import type {
 } from '../types';
 import { IMAGES } from './images';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Supabase removed - Pure MongoDB & REST API architecture
+export const isSupabaseConfigured = false;
+export const supabase = null;
 
-export const isSupabaseConfigured = Boolean(
-  supabaseUrl &&
-  supabaseAnonKey &&
-  supabaseUrl !== 'https://your-project.supabase.co' &&
-  !supabaseUrl.includes('your-project')
-);
+// -------------------------------------------------------------
+// Real-Time Event Stream (SSE) Client Listener
+// -------------------------------------------------------------
+let sseConnection: EventSource | null = null;
 
-export const supabase: SupabaseClient | null = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+export function initRealtimeSync(): void {
+  if (typeof window === 'undefined') return;
+  if (sseConnection) return;
+
+  try {
+    sseConnection = new EventSource('/api/realtime');
+
+    sseConnection.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload?.event && payload.event !== 'connected') {
+          window.dispatchEvent(new CustomEvent('sakil_data_updated', { detail: payload }));
+          window.dispatchEvent(new CustomEvent('sakil_data_sync', { detail: payload }));
+        }
+      } catch {}
+    };
+
+    sseConnection.onerror = () => {
+      if (sseConnection) {
+        sseConnection.close();
+        sseConnection = null;
+      }
+      setTimeout(initRealtimeSync, 3000);
+    };
+  } catch (err) {
+    console.warn('[Realtime] Failed to connect SSE:', err);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  initRealtimeSync();
+}
 
 // Default Business Settings (as specified in Prompt)
 export const DEFAULT_BUSINESS_SETTINGS: BusinessSettings = {
@@ -511,17 +538,7 @@ export async function fetchBusinessSettings(): Promise<BusinessSettings> {
     // server route offline or static mode
   }
 
-  // 2. Try Supabase if configured
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.from('business_settings').select('*').limit(1).single();
-      if (!error && data) return data;
-    } catch (e) {
-      console.warn('Supabase fetch failed, falling back to persistent settings:', e);
-    }
-  }
-
-  // 3. Fallback to local storage / defaults
+  // Fallback to local storage / defaults
   return getPersistentData<BusinessSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_BUSINESS_SETTINGS);
 }
 
@@ -557,16 +574,7 @@ export async function saveBusinessSettings(settings: Partial<BusinessSettings>):
     console.warn('Server save settings error:', e);
   }
 
-  // 2. Supabase if configured
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('business_settings').upsert(updated);
-    } catch (e) {
-      console.warn('Supabase save failed:', e);
-    }
-  }
-
-  // 3. Save locally and broadcast
+  // 2. Save locally and broadcast
   await setPersistentData(STORAGE_KEYS.SETTINGS, updated);
   return updated;
 }
@@ -586,17 +594,7 @@ export async function fetchServices(): Promise<Service[]> {
     // server route offline
   }
 
-  // 2. Supabase if configured
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.from('services').select('*').order('display_order', { ascending: true });
-      if (!error && data && data.length > 0) return data;
-    } catch (e) {
-      console.warn('Supabase services fetch failed:', e);
-    }
-  }
-
-  // 3. Fallback to local storage / defaults
+  // Fallback to local storage / defaults
   return getPersistentData<Service[]>(STORAGE_KEYS.SERVICES, DEFAULT_SERVICES);
 }
 
@@ -631,16 +629,7 @@ export async function saveService(service: Service): Promise<void> {
     console.warn('Server save service error:', e);
   }
 
-  // 2. Supabase
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('services').upsert(updatedService);
-    } catch (e) {
-      console.warn('Supabase save service error:', e);
-    }
-  }
-
-  // 3. Local storage and broadcast
+  // 2. Local storage and broadcast
   await setPersistentData(STORAGE_KEYS.SERVICES, services);
 }
 
@@ -654,13 +643,6 @@ export async function deleteService(serviceId: string): Promise<void> {
     console.warn('Server delete service error:', e);
   }
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('services').delete().eq('id', serviceId);
-    } catch (e) {
-      console.warn('Supabase delete service error:', e);
-    }
-  }
   await setPersistentData(STORAGE_KEYS.SERVICES, filtered);
 }
 
@@ -676,14 +658,6 @@ export async function fetchEnquiries(): Promise<Enquiry[]> {
     }
   } catch (e) {}
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.from('enquiries').select('*').order('created_at', { ascending: false });
-      if (!error && data) return data;
-    } catch (e) {
-      console.warn('Supabase enquiries fetch failed:', e);
-    }
-  }
   return loadStorage<Enquiry[]>(STORAGE_KEYS.ENQUIRIES, INITIAL_DEMO_ENQUIRIES);
 }
 
@@ -724,26 +698,7 @@ export async function submitEnquiry(payload: {
     console.warn('Server enquiry submit failed:', e);
   }
 
-  // 2. Try Supabase first
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.from('enquiries').insert([newEnquiry]).select().single();
-      if (!error && data) {
-        await supabase.from('admin_notifications').insert({
-          title: 'New Enquiry Received',
-          message: `${newEnquiry.name} submitted ${newEnquiry.requirement_type}`,
-          type: 'enquiry',
-          enquiry_id: data.id,
-          read: false,
-        });
-        return data;
-      }
-    } catch (e) {
-      console.warn('Supabase insert failed, saving locally:', e);
-    }
-  }
-
-  // Fallback to local storage
+  // Local storage fallback and notifications
   const enquiries = loadStorage<Enquiry[]>(STORAGE_KEYS.ENQUIRIES, INITIAL_DEMO_ENQUIRIES);
   enquiries.unshift(newEnquiry);
   saveStorage(STORAGE_KEYS.ENQUIRIES, enquiries);
@@ -773,14 +728,6 @@ export async function updateEnquiry(enquiryId: string, updates: Partial<Enquiry>
     });
   } catch (e) {}
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('enquiries').update(updates).eq('id', enquiryId);
-    } catch (e) {
-      console.warn('Supabase update enquiry error:', e);
-    }
-  }
-
   const enquiries = loadStorage<Enquiry[]>(STORAGE_KEYS.ENQUIRIES, INITIAL_DEMO_ENQUIRIES);
   const index = enquiries.findIndex(e => e.id === enquiryId);
   if (index >= 0) {
@@ -794,13 +741,6 @@ export async function deleteEnquiry(enquiryId: string): Promise<void> {
     await fetch(`/api/enquiries/${enquiryId}`, { method: 'DELETE' });
   } catch (e) {}
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('enquiries').delete().eq('id', enquiryId);
-    } catch (e) {
-      console.warn('Supabase delete enquiry error:', e);
-    }
-  }
   const enquiries = loadStorage<Enquiry[]>(STORAGE_KEYS.ENQUIRIES, INITIAL_DEMO_ENQUIRIES);
   saveStorage(STORAGE_KEYS.ENQUIRIES, enquiries.filter(e => e.id !== enquiryId));
 }
@@ -820,17 +760,7 @@ export async function fetchGallery(): Promise<GalleryItem[]> {
     // server offline
   }
 
-  // 2. Supabase
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.from('gallery').select('*').order('display_order', { ascending: true });
-      if (!error && data && data.length > 0) return data;
-    } catch (e) {
-      console.warn('Supabase gallery fetch failed:', e);
-    }
-  }
-
-  // 3. Fallback
+  // Fallback
   return getPersistentData<GalleryItem[]>(STORAGE_KEYS.GALLERY, DEFAULT_GALLERY);
 }
 
@@ -865,16 +795,7 @@ export async function saveGalleryItem(item: GalleryItem): Promise<void> {
     console.warn('Server save gallery error:', e);
   }
 
-  // 2. Supabase
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('gallery').upsert(updatedItem);
-    } catch (e) {
-      console.warn('Supabase gallery upsert error:', e);
-    }
-  }
-
-  // 3. Local storage and broadcast
+  // 2. Local storage and broadcast
   await setPersistentData(STORAGE_KEYS.GALLERY, gallery);
 }
 
@@ -888,13 +809,6 @@ export async function deleteGalleryItem(itemId: string): Promise<void> {
     console.warn('Server delete gallery error:', e);
   }
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('gallery').delete().eq('id', itemId);
-    } catch (e) {
-      console.warn('Supabase gallery delete error:', e);
-    }
-  }
   await setPersistentData(STORAGE_KEYS.GALLERY, filtered);
 }
 
@@ -910,14 +824,6 @@ export async function fetchFAQs(): Promise<FAQItem[]> {
     }
   } catch (e) {}
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.from('faq').select('*').order('display_order', { ascending: true });
-      if (!error && data && data.length > 0) return data;
-    } catch (e) {
-      console.warn('Supabase faqs fetch failed:', e);
-    }
-  }
   return getPersistentData<FAQItem[]>(STORAGE_KEYS.FAQS, DEFAULT_FAQS);
 }
 
@@ -938,13 +844,6 @@ export async function saveFAQItem(item: FAQItem): Promise<void> {
     });
   } catch (e) {}
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('faq').upsert(item);
-    } catch (e) {
-      console.warn('Supabase faq upsert error:', e);
-    }
-  }
   await setPersistentData(STORAGE_KEYS.FAQS, faqs);
 }
 
@@ -956,13 +855,6 @@ export async function deleteFAQItem(itemId: string): Promise<void> {
     await fetch(`/api/faqs/${itemId}`, { method: 'DELETE' });
   } catch (e) {}
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('faq').delete().eq('id', itemId);
-    } catch (e) {
-      console.warn('Supabase faq delete error:', e);
-    }
-  }
   await setPersistentData(STORAGE_KEYS.FAQS, filtered);
 }
 
@@ -973,13 +865,13 @@ export async function trackAnalyticsEvent(event: Omit<AnalyticsEvent, 'id' | 'cr
     created_at: new Date().toISOString(),
   };
 
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('analytics_events').insert([record]);
-    } catch (e) {
-      console.warn('Supabase analytics insert error:', e);
-    }
-  }
+  try {
+    await fetch('/api/analytics', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record),
+    });
+  } catch {}
 
   const events = loadStorage<AnalyticsEvent[]>(STORAGE_KEYS.ANALYTICS, []);
   events.unshift(record);
@@ -988,26 +880,28 @@ export async function trackAnalyticsEvent(event: Omit<AnalyticsEvent, 'id' | 'cr
 }
 
 export async function fetchAnalyticsEvents(): Promise<AnalyticsEvent[]> {
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.from('analytics_events').select('*').order('created_at', { ascending: false }).limit(200);
-      if (!error && data) return data;
-    } catch (e) {
-      console.warn('Supabase analytics fetch failed:', e);
+  try {
+    const res = await fetch('/api/analytics');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.events) && data.events.length > 0) {
+        return data.events;
+      }
     }
-  }
+  } catch {}
   return loadStorage<AnalyticsEvent[]>(STORAGE_KEYS.ANALYTICS, []);
 }
 
 export async function fetchNotifications(): Promise<AdminNotification[]> {
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.from('admin_notifications').select('*').order('created_at', { ascending: false });
-      if (!error && data) return data;
-    } catch (e) {
-      console.warn('Supabase notifications fetch failed:', e);
+  try {
+    const res = await fetch('/api/notifications');
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.notifications) && data.notifications.length > 0) {
+        return data.notifications;
+      }
     }
-  }
+  } catch {}
   return loadStorage<AdminNotification[]>(STORAGE_KEYS.NOTIFICATIONS, [
     {
       id: 'notif-1',
@@ -1021,13 +915,9 @@ export async function fetchNotifications(): Promise<AdminNotification[]> {
 }
 
 export async function markNotificationRead(id: string): Promise<void> {
-  if (isSupabaseConfigured && supabase) {
-    try {
-      await supabase.from('admin_notifications').update({ read: true }).eq('id', id);
-    } catch (e) {
-      console.warn('Supabase mark read error:', e);
-    }
-  }
+  try {
+    await fetch(`/api/notifications/${id}/read`, { method: 'PATCH' });
+  } catch {}
   const notifs = loadStorage<AdminNotification[]>(STORAGE_KEYS.NOTIFICATIONS, []);
   const target = notifs.find(n => n.id === id);
   if (target) {
@@ -1041,12 +931,6 @@ const SESSION_AUTH_KEY = 'sakil_admin_session_auth';
 
 export function isAdminAuthenticated(): boolean {
   if (typeof window === 'undefined') return false;
-
-  // Supabase Auth session check (if Supabase is active)
-  if (isSupabaseConfigured && supabase) {
-    const session = localStorage.getItem('sb-' + (supabaseUrl?.split('//')[1]?.split('.')[0] || '') + '-auth-token');
-    if (session) return true;
-  }
 
   // Active browser session check (isolated to current tab/session; never persists indefinitely)
   try {
@@ -1130,19 +1014,6 @@ export async function adminLogout(): Promise<void> {
 
 // AI helpers for Admin Dashboard
 export async function generateAIReply(enquiry: Enquiry): Promise<string> {
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase.functions.invoke('ai-admin-reply', {
-        body: { enquiry }
-      });
-      if (!error && data?.suggested_reply) {
-        return data.suggested_reply;
-      }
-    } catch (e) {
-      console.warn('Edge function invoke failed, using built-in generator:', e);
-    }
-  }
-
   // Verified factual template without hallucinating prices or inventory
   return `Hello ${enquiry.name || 'Sir/Madam'}, thank you for contacting SAKIL BAG STORE (Sector 22, Noida). We received your requirement for ${enquiry.requirement_type}. Please share clear photos of the part or bring your bag to our store at Chaura Raghunathpur, Sector 22, Noida (Near H8WV+F28) so Mohd Shakil can inspect and assist you with the right replacement. Phone: 083838 04752.`;
 }

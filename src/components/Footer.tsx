@@ -187,13 +187,27 @@ export const Footer: React.FC<FooterProps> = ({ settings, onNavigate }) => {
         </div>
 
         {/* Bottom Bar */}
-        <div className="pt-8 border-t border-neutral-900 flex flex-col sm:flex-row items-center justify-between text-xs text-neutral-500 gap-4">
-          <p>© {new Date().getFullYear()} SAKIL BAG STORE. All rights reserved. Owner: Mohd Shakil. Sector 22, Noida.</p>
+        <div className="pt-8 border-t border-neutral-900 flex flex-col md:flex-row items-center justify-between text-xs text-neutral-500 gap-4">
+          <div className="flex flex-col sm:flex-row items-center gap-2 text-center sm:text-left">
+            <p>© {new Date().getFullYear()} SAKIL BAG STORE. All rights reserved. Owner: Mohd Shakil. Sector 22, Noida.</p>
+            <span className="hidden sm:inline text-neutral-700">•</span>
+            <p className="text-neutral-400">
+              Made by{' '}
+              <a
+                href="https://bhavkan-digital.netlify.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-orange-400 hover:text-orange-300 font-medium underline underline-offset-4 transition-colors"
+              >
+                Bhavkan Digital
+              </a>
+            </p>
+          </div>
           <div className="flex items-center gap-4">
-            <button onClick={() => onNavigate('/about')} className="hover:text-neutral-300">About Store</button>
-            <button onClick={() => onNavigate('/faq')} className="hover:text-neutral-300">FAQ</button>
-            <button onClick={() => onNavigate('/contact')} className="hover:text-neutral-300">Contact</button>
-            <button onClick={() => onNavigate('/gallery')} className="hover:text-neutral-300">Parts Gallery</button>
+            <button onClick={() => onNavigate('/about')} className="hover:text-neutral-300 transition-colors">About Store</button>
+            <button onClick={() => onNavigate('/faq')} className="hover:text-neutral-300 transition-colors">FAQ</button>
+            <button onClick={() => onNavigate('/contact')} className="hover:text-neutral-300 transition-colors">Contact</button>
+            <button onClick={() => onNavigate('/gallery')} className="hover:text-neutral-300 transition-colors">Parts Gallery</button>
           </div>
         </div>
       </div>

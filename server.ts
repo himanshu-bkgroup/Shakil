@@ -11,6 +11,7 @@ import {
   getDatabaseStatus,
   syncStoreToMongo,
   isMongoConnected,
+  getMongoDb,
   mongoGetSettings,
   mongoSaveSettings,
   mongoGetServices,
@@ -86,6 +87,73 @@ function writeStore(data: StoreData): void {
     console.error('Error writing store.json:', err);
   }
 }
+
+// -------------------------------------------------------------
+// Real-Time Event Stream (SSE) for Instant Multi-Device Sync
+// -------------------------------------------------------------
+const sseClients: express.Response[] = [];
+
+export function broadcastRealtimeUpdate(event: string, payload?: any) {
+  const data = JSON.stringify({ event, payload, timestamp: new Date().toISOString() });
+  for (let i = sseClients.length - 1; i >= 0; i--) {
+    try {
+      sseClients[i].write(`data: ${data}\n\n`);
+    } catch {
+      sseClients.splice(i, 1);
+    }
+  }
+}
+
+app.get('/api/realtime', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders?.();
+
+  sseClients.push(res);
+  res.write(`data: ${JSON.stringify({ event: 'connected', timestamp: new Date().toISOString() })}\n\n`);
+
+  req.on('close', () => {
+    const idx = sseClients.indexOf(res);
+    if (idx !== -1) sseClients.splice(idx, 1);
+  });
+});
+
+// Dynamic route for uploaded images: serves from disk, or restores from MongoDB uploads collection
+app.get('/uploads/:filename', async (req, res, next) => {
+  const filename = req.params.filename;
+  const filePath = path.join(UPLOADS_DIR, filename);
+
+  if (fs.existsSync(filePath)) {
+    return res.sendFile(filePath);
+  }
+
+  // If not on local disk (e.g., container restarted), restore from MongoDB Atlas!
+  if (isMongoConnected()) {
+    try {
+      const database = getMongoDb();
+      if (database) {
+        const doc = await database.collection('uploads').findOne({ filename });
+        if (doc && doc.dataUrl) {
+          const matches = doc.dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+          if (matches) {
+            const buf = Buffer.from(matches[2], 'base64');
+            try {
+              fs.writeFileSync(filePath, buf);
+            } catch {}
+            res.setHeader('Content-Type', matches[1] || 'image/jpeg');
+            res.setHeader('Cache-Control', 'public, max-age=604800');
+            return res.send(buf);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[Server] Error retrieving image from MongoDB:', err);
+    }
+  }
+
+  next();
+});
 
 // Serve uploaded images statically with performance caching headers
 app.use(
@@ -181,6 +249,15 @@ app.get('/api/data', async (req, res) => {
         mongoGetEnquiries(),
         mongoGetNotifications(),
       ]);
+
+      if (settings) store.settings = settings;
+      if (services && services.length > 0) store.services = services;
+      if (gallery && gallery.length > 0) store.gallery = gallery;
+      if (faqs && faqs.length > 0) store.faqs = faqs;
+      if (enquiries) store.enquiries = enquiries;
+      if (notifications) store.notifications = notifications;
+      writeStore(store);
+
       return res.json({
         settings: settings || store.settings,
         services: services && services.length > 0 ? services : store.services,
@@ -191,7 +268,7 @@ app.get('/api/data', async (req, res) => {
         source: 'mongodb',
       });
     } catch (err) {
-      console.error('Error fetching data from MongoDB, falling back:', err);
+      console.warn('Error fetching data from MongoDB, falling back:', err);
     }
   }
   res.json({ ...store, source: 'file' });
@@ -241,6 +318,7 @@ app.post('/api/settings', async (req, res) => {
     await mongoSaveSettings(updatedSettings);
   }
 
+  broadcastRealtimeUpdate('settings', updatedSettings);
   res.json({ success: true, settings: updatedSettings, source: isMongoConnected() ? 'mongodb' : 'file' });
 });
 
@@ -276,6 +354,7 @@ app.post('/api/services', async (req, res) => {
     await mongoSaveServices(req.body);
   }
 
+  broadcastRealtimeUpdate('services', store.services);
   res.json({ success: true, services: store.services, source: isMongoConnected() ? 'mongodb' : 'file' });
 });
 
@@ -291,6 +370,7 @@ app.delete('/api/services/:id', async (req, res) => {
     await mongoDeleteService(id);
   }
 
+  broadcastRealtimeUpdate('services', store.services);
   res.json({ success: true, services: store.services, source: isMongoConnected() ? 'mongodb' : 'file' });
 });
 
@@ -326,6 +406,7 @@ app.post('/api/gallery', async (req, res) => {
     await mongoSaveGallery(req.body);
   }
 
+  broadcastRealtimeUpdate('gallery', store.gallery);
   res.json({ success: true, gallery: store.gallery, source: isMongoConnected() ? 'mongodb' : 'file' });
 });
 
@@ -341,6 +422,7 @@ app.delete('/api/gallery/:id', async (req, res) => {
     await mongoDeleteGallery(id);
   }
 
+  broadcastRealtimeUpdate('gallery', store.gallery);
   res.json({ success: true, gallery: store.gallery, source: isMongoConnected() ? 'mongodb' : 'file' });
 });
 
@@ -376,6 +458,7 @@ app.post('/api/faqs', async (req, res) => {
     await mongoSaveFaqs(req.body);
   }
 
+  broadcastRealtimeUpdate('faqs', store.faqs);
   res.json({ success: true, faqs: store.faqs, source: isMongoConnected() ? 'mongodb' : 'file' });
 });
 
@@ -391,6 +474,7 @@ app.delete('/api/faqs/:id', async (req, res) => {
     await mongoDeleteFaq(id);
   }
 
+  broadcastRealtimeUpdate('faqs', store.faqs);
   res.json({ success: true, faqs: store.faqs, source: isMongoConnected() ? 'mongodb' : 'file' });
 });
 
@@ -439,6 +523,8 @@ app.post('/api/enquiries', async (req, res) => {
     await mongoSaveNotification(notif);
   }
 
+  broadcastRealtimeUpdate('enquiries', newEnquiry);
+  broadcastRealtimeUpdate('notifications', notif);
   res.json({ success: true, enquiry: newEnquiry, source: isMongoConnected() ? 'mongodb' : 'file' });
 });
 
@@ -455,6 +541,7 @@ app.patch('/api/enquiries/:id', async (req, res) => {
     if (isMongoConnected()) {
       await mongoSaveEnquiry(list[index]);
     }
+    broadcastRealtimeUpdate('enquiries', list[index]);
   }
   res.json({ success: true, enquiry: list[index], source: isMongoConnected() ? 'mongodb' : 'file' });
 });
@@ -471,6 +558,7 @@ app.delete('/api/enquiries/:id', async (req, res) => {
     await mongoDeleteEnquiry(id);
   }
 
+  broadcastRealtimeUpdate('enquiries');
   res.json({ success: true, source: isMongoConnected() ? 'mongodb' : 'file' });
 });
 
@@ -501,11 +589,12 @@ app.patch('/api/notifications/:id/read', async (req, res) => {
     await mongoMarkNotificationRead(id);
   }
 
+  broadcastRealtimeUpdate('notifications');
   res.json({ success: true });
 });
 
-// Image Upload Endpoint: converts base64 to real static file in public/uploads/
-app.post('/api/upload', (req, res) => {
+// Image Upload Endpoint: converts base64 to static file AND backs up in MongoDB
+app.post('/api/upload', async (req, res) => {
   try {
     const { image, name } = req.body || {};
     if (!image || typeof image !== 'string') {
@@ -537,14 +626,77 @@ app.post('/api/upload', (req, res) => {
     const filename = `${safeBaseName}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
     const filePath = path.join(UPLOADS_DIR, filename);
 
+    // 1. Save to local disk for instantaneous serving
     fs.writeFileSync(filePath, buffer);
     const publicUrl = `/uploads/${filename}`;
 
+    // 2. Real-time sync with MongoDB: Save uploaded image into MongoDB uploads collection
+    if (isMongoConnected()) {
+      try {
+        const database = getMongoDb();
+        if (database) {
+          await database.collection('uploads').updateOne(
+            { filename },
+            {
+              $set: {
+                filename,
+                mimeType,
+                dataUrl: image,
+                size: buffer.length,
+                url: publicUrl,
+                updated_at: new Date().toISOString(),
+              },
+            },
+            { upsert: true }
+          );
+          console.log(`[MongoDB] Uploaded image synced to MongoDB collection: uploads (${filename})`);
+        }
+      } catch (mErr) {
+        console.warn('[MongoDB] Warning: Failed to backup image in MongoDB:', mErr);
+      }
+    }
+
+    broadcastRealtimeUpdate('image_uploaded', { url: publicUrl, filename });
     console.log(`[Upload] Image saved to ${publicUrl} (${(buffer.length / 1024).toFixed(1)} KB)`);
     return res.json({ success: true, url: publicUrl });
   } catch (err: any) {
     console.error('Error handling /api/upload:', err);
     return res.status(500).json({ success: false, message: err.message || 'Upload failed' });
+  }
+});
+
+// Analytics tracking endpoint
+app.post('/api/analytics', async (req, res) => {
+  try {
+    const record = {
+      ...req.body,
+      id: req.body.id || 'evt-' + Date.now().toString(36),
+      created_at: new Date().toISOString(),
+    };
+    if (isMongoConnected()) {
+      const database = getMongoDb();
+      if (database) {
+        await database.collection('analytics_events').insertOne(record);
+      }
+    }
+    res.json({ success: true, record });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.get('/api/analytics', async (req, res) => {
+  try {
+    if (isMongoConnected()) {
+      const database = getMongoDb();
+      if (database) {
+        const events = await database.collection('analytics_events').find({}).sort({ created_at: -1 }).limit(200).toArray();
+        return res.json({ success: true, events: events.map(({ _id, ...e }) => e) });
+      }
+    }
+    res.json({ success: true, events: [] });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

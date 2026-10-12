@@ -28,7 +28,6 @@ import {
   markNotificationRead,
   setAdminAuthenticated,
   adminLogout,
-  isSupabaseConfigured,
 } from '../../lib/supabase';
 import { EnquiryDetailModal } from './EnquiryDetailModal';
 import { ImageUploadInput } from '../../components/ImageUploadInput';
@@ -506,13 +505,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                 </button>
                 <span className="text-[11px] px-2.5 py-1 rounded-full font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-800 flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Multi-Device Sync Active</span>
+                  <span>Real-Time MongoDB Sync</span>
                 </span>
-                {isSupabaseConfigured && (
-                  <span className="text-[11px] px-2.5 py-1 rounded-full font-mono bg-neutral-900 text-neutral-300 border border-neutral-700">
-                    Supabase Connected
-                  </span>
-                )}
               </div>
             </div>
 
