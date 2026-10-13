@@ -500,8 +500,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                   title="Click to view Database management"
                 >
                   <Database className="h-3 w-3 text-orange-400" />
-                  <span className={`h-1.5 w-1.5 rounded-full ${dbStatus?.connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
-                  <span>{dbStatus?.connected ? `MongoDB: ${dbStatus.databaseName}` : 'Database: Local Store'}</span>
+                  <span className={`h-1.5 w-1.5 rounded-full ${dbStatus === null ? 'bg-amber-400 animate-pulse' : dbStatus?.connected ? 'bg-emerald-400 animate-pulse' : 'bg-neutral-400'}`} />
+                  <span>
+                    {dbStatus === null
+                      ? 'MongoDB: Checking...'
+                      : dbStatus?.connected
+                      ? `MongoDB: ${dbStatus.databaseName}`
+                      : 'Database: Standby Store'}
+                  </span>
                 </button>
                 <span className="text-[11px] px-2.5 py-1 rounded-full font-mono bg-emerald-950/80 text-emerald-300 border border-emerald-800 flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -1753,7 +1759,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="font-heading text-xl font-bold text-white">
-                      {dbStatus?.connected ? 'MongoDB Atlas (Connected)' : 'Local File Store (Standby)'}
+                      {dbStatus === null
+                        ? 'Connecting to MongoDB Atlas...'
+                        : dbStatus?.connected
+                        ? `MongoDB Atlas (${dbStatus.databaseName})`
+                        : 'Local Standby Store'}
                     </span>
                     <span
                       className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-mono border ${

@@ -255,17 +255,41 @@
       "question": "How can I contact Mohd Shakil at SAKIL BAG STORE?"
     }
   ],
-  "enquiries": [],
-  "notifications": [
+  "enquiries": [
     {
-      "id": "notif-1791740529081",
-      "title": "New Enquiry Received",
-      "message": "Test User submitted a requirement for Wheel Replacement",
-      "type": "enquiry",
-      "read": false,
-      "enquiry_id": "enq-mv441sc9-kesj",
-      "created_at": "2026-10-11T17:42:09.081Z"
+      "name": "Test Customer",
+      "phone": "9876543210",
+      "requirement_type": "WHEEL_REPLACEMENT",
+      "requirement_data": {
+        "brand": "American Tourister",
+        "problem": "Wheel stuck"
+      },
+      "message": "Testing MongoDB integration",
+      "source_page": "/test",
+      "id": "enq-mv4wcexi-p98w",
+      "created_at": "2026-10-12T06:54:14.166Z",
+      "status": "NEW"
     }
   ],
-  "updated_at": "2026-10-11T17:42:14.242Z"
+  "notifications": [
+    {
+      "id": "notif-1791788054166",
+      "title": "New Enquiry Received",
+      "message": "Test Customer submitted a requirement for WHEEL_REPLACEMENT",
+      "type": "enquiry",
+      "read": false,
+      "enquiry_id": "enq-mv4wcexi-p98w",
+      "created_at": "2026-10-12T06:54:14.166Z"
+    },
+    {
+      "id": "notif-1791740529081",
+      "created_at": "2026-10-11T17:42:09.081Z",
+      "enquiry_id": "enq-mv441sc9-kesj",
+      "message": "Test User submitted a requirement for Wheel Replacement",
+      "read": false,
+      "title": "New Enquiry Received",
+      "type": "enquiry"
+    }
+  ],
+  "updated_at": "2026-10-12T06:54:14.166Z"
 }

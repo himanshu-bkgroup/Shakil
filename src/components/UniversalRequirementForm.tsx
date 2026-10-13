@@ -158,7 +158,7 @@ export const UniversalRequirementForm: React.FC<UniversalRequirementFormProps> =
         };
       }
 
-      // 2. Save enquiry to Supabase
+      // 2. Save enquiry to MongoDB via backend API
       const enquiry = await submitEnquiry({
         name,
         phone: cleanPhone,

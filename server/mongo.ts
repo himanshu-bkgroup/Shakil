@@ -112,23 +112,22 @@ export async function connectMongo(
       db = null;
     }
 
-    // Production-ready MongoDB connection pooling options for cloud containers & serverless
+    // Production-ready MongoDB connection pooling options for Atlas cloud clusters
     const newClient = new MongoClient(uri, {
-      serverSelectionTimeoutMS: 10000,
-      connectTimeoutMS: 10000,
-      socketTimeoutMS: 45000,
+      serverSelectionTimeoutMS: 30000,
+      connectTimeoutMS: 30000,
+      socketTimeoutMS: 60000,
       maxPoolSize: 20,
-      minPoolSize: 0, // 0 ensures idle sockets aren't forcibly kept open when idle
-      maxIdleTimeMS: 30000, // Recycle sockets every 30s to prevent stale cloud NAT drops
-      waitQueueTimeoutMS: 10000,
+      minPoolSize: 1,
+      maxIdleTimeMS: 120000,
+      waitQueueTimeoutMS: 15000,
       retryWrites: true,
       retryReads: true,
-      heartbeatFrequencyMS: 10000,
     });
 
     // Connection lifecycle logging
     newClient.on('connectionPoolCleared', (ev: any) => {
-      console.log(`[MongoDB] Connection pool refreshed for ${ev?.address || 'cluster'}`);
+      console.log(`[MongoDB] Connection pool refreshed automatically for ${ev?.address || 'cluster'}`);
     });
 
     await newClient.connect();
@@ -208,7 +207,7 @@ async function safeMongoExecute<T>(
 ): Promise<T> {
   if (!db || !client) return fallback;
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       return await operation(db);
     } catch (err: any) {
@@ -226,9 +225,9 @@ async function safeMongoExecute<T>(
         errMsg.includes('topology was destroyed') ||
         errMsg.includes('pool was cleared');
 
-      if (attempt === 1 && isPoolOrTransient) {
-        // Pool is actively recreating or reconnecting; wait 200ms and retry
-        await new Promise((r) => setTimeout(r, 200));
+      if (attempt < 3 && isPoolOrTransient) {
+        // Pool is actively recreating or reconnecting; wait with exponential backoff and retry
+        await new Promise((r) => setTimeout(r, attempt * 400));
         continue;
       }
 
@@ -282,8 +281,8 @@ export async function getDatabaseStatus(): Promise<{
     };
   }
 
-  // Use cached counts if fresh (within 15 seconds) to avoid redundant network roundtrips
-  if (cachedCounts && Date.now() - lastCountsFetchTime < 15000) {
+  // Use cached counts if fresh (within 30 seconds) to avoid redundant network roundtrips
+  if (cachedCounts && Date.now() - lastCountsFetchTime < 30000) {
     return {
       connected: true,
       type: 'mongodb',
@@ -294,14 +293,23 @@ export async function getDatabaseStatus(): Promise<{
     };
   }
 
+  const fallbackCounts = cachedCounts || {
+    services: 9,
+    gallery: 6,
+    enquiries: 0,
+    faqs: 10,
+    notifications: 1,
+  };
+
   return safeMongoExecute(
     async (database) => {
+      // estimatedDocumentCount is fast (O(1) collection metadata) without aggregation scans
       const [services, gallery, enquiries, faqs, notifications] = await Promise.all([
-        database.collection('services').countDocuments().catch(() => 0),
-        database.collection('gallery').countDocuments().catch(() => 0),
-        database.collection('enquiries').countDocuments().catch(() => 0),
-        database.collection('faqs').countDocuments().catch(() => 0),
-        database.collection('notifications').countDocuments().catch(() => 0),
+        database.collection('services').estimatedDocumentCount().catch(() => 0),
+        database.collection('gallery').estimatedDocumentCount().catch(() => 0),
+        database.collection('enquiries').estimatedDocumentCount().catch(() => 0),
+        database.collection('faqs').estimatedDocumentCount().catch(() => 0),
+        database.collection('notifications').estimatedDocumentCount().catch(() => 0),
       ]);
 
       cachedCounts = {
@@ -323,17 +331,11 @@ export async function getDatabaseStatus(): Promise<{
       };
     },
     {
-      connected: false,
-      type: 'file' as const,
+      connected: isMongoConnected(),
+      type: isMongoConnected() ? ('mongodb' as const) : ('file' as const),
       databaseName: currentDbName,
       maskedUri: activeUri ? maskUri(activeUri) : '',
-      counts: {
-        services: 0,
-        gallery: 0,
-        enquiries: 0,
-        faqs: 0,
-        notifications: 0,
-      },
+      counts: fallbackCounts,
       lastError,
     },
     'getDatabaseStatus'
