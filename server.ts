@@ -187,16 +187,26 @@ app.post('/api/database/connect', async (req, res) => {
     }
 
     const result = await connectMongo(uri, dbName);
-    if (result.success) {
-      // Auto-migrate current data to MongoDB so nothing is lost
-      const store = readStore();
-      await syncStoreToMongo(store);
+    const status = await getDatabaseStatus();
+
+    if (!result.success) {
+      return res.json({ success: false, message: result.message, status });
     }
 
-    const status = await getDatabaseStatus();
+    // Auto-migrate current data to MongoDB in background and broadcast
+    const store = readStore();
+    syncStoreToMongo(store)
+      .then(() => {
+        broadcastChange('sync', { database: dbName });
+      })
+      .catch((err) => {
+        console.warn('[MongoDB] Initial migration sync note:', err);
+      });
+
     res.json({ ...result, status });
   } catch (err: any) {
-    res.status(500).json({ success: false, message: err.message });
+    const status = await getDatabaseStatus().catch(() => null);
+    res.status(500).json({ success: false, message: err.message, status });
   }
 });
 

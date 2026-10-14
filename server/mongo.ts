@@ -103,19 +103,10 @@ export async function connectMongo(
 
     console.log(`[MongoDB] Connecting to MongoDB (${maskUri(uri)})... Target DB: "${resolvedDbName}"`);
 
-    // Close any previous client
-    if (client) {
-      try {
-        await client.close();
-      } catch {}
-      client = null;
-      db = null;
-    }
-
     // Production-ready MongoDB connection pooling options for Atlas cloud clusters
     const newClient = new MongoClient(uri, {
-      serverSelectionTimeoutMS: 30000,
-      connectTimeoutMS: 30000,
+      serverSelectionTimeoutMS: 15000,
+      connectTimeoutMS: 15000,
       socketTimeoutMS: 60000,
       maxPoolSize: 20,
       minPoolSize: 1,
@@ -136,11 +127,19 @@ export async function connectMongo(
     const testDb = newClient.db(resolvedDbName);
     await testDb.command({ ping: 1 });
 
+    // ONLY close previous client after the new one has successfully pinged
+    if (client) {
+      try {
+        await client.close();
+      } catch {}
+    }
+
     client = newClient;
     db = testDb;
     currentDbName = resolvedDbName;
     activeUri = uri;
     lastError = null;
+    cachedCounts = null;
 
     if (saveConfig) {
       saveUriConfig(uri, currentDbName);
@@ -149,9 +148,16 @@ export async function connectMongo(
     console.log(`[MongoDB] Successfully connected to database: "${currentDbName}"`);
     return { success: true, message: `Connected to MongoDB database "${currentDbName}" successfully.` };
   } catch (err: any) {
-    lastError = err.message || 'Failed to connect to MongoDB';
-    console.error('[MongoDB] Connection error:', lastError);
-    return { success: false, message: lastError || 'Connection failed' };
+    let friendlyMessage = err?.message || 'Failed to connect to MongoDB';
+    if (friendlyMessage.includes('authentication failed') || friendlyMessage.includes('bad auth')) {
+      friendlyMessage = 'MongoDB Atlas Authentication Failed: Username or password is incorrect. Please verify your Database Access user credentials in Atlas.';
+    } else if (friendlyMessage.includes('timed out') || friendlyMessage.includes('serverSelectionTimeoutMS') || friendlyMessage.includes('could not connect to any servers')) {
+      friendlyMessage = 'Connection Timed Out: Please check your Network Access in MongoDB Atlas and ensure 0.0.0.0/0 (Allow Access from Anywhere) is active.';
+    }
+
+    lastError = friendlyMessage;
+    console.error('[MongoDB] Connection error:', friendlyMessage);
+    return { success: false, message: friendlyMessage };
   }
 }
 
@@ -343,89 +349,110 @@ export async function getDatabaseStatus(): Promise<{
 }
 
 /**
- * Sync entire local store to MongoDB
+ * Sync entire local store to MongoDB with high-speed bulkWrite
  */
 export async function syncStoreToMongo(store: any): Promise<{ success: boolean; message: string }> {
   if (!db) return { success: false, message: 'MongoDB is not connected' };
 
   try {
+    const tasks: Promise<any>[] = [];
+
     // 1. Settings
     if (store.settings) {
       const cleanSettings = { ...store.settings };
       delete cleanSettings._id;
       const targetId = cleanSettings.id || 'sakil-default-settings';
-      await db.collection('settings').updateOne(
-        { $or: [{ id: targetId }, { _id: targetId as any }, { _id: 'business_settings' as any }] },
-        { $set: cleanSettings },
-        { upsert: true }
+      tasks.push(
+        db.collection('settings').updateOne(
+          { $or: [{ id: targetId }, { _id: targetId as any }, { _id: 'business_settings' as any }] },
+          { $set: cleanSettings },
+          { upsert: true }
+        )
       );
     }
 
-    // 2. Services
+    // 2. Services (batch bulkWrite)
     if (Array.isArray(store.services) && store.services.length > 0) {
-      for (const service of store.services) {
+      const ops = store.services.map((service: any) => {
         const item = { ...service };
         delete item._id;
-        await db.collection('services').updateOne(
-          { id: service.id },
-          { $set: item },
-          { upsert: true }
-        );
-      }
+        return {
+          updateOne: {
+            filter: { id: service.id },
+            update: { $set: item },
+            upsert: true,
+          },
+        };
+      });
+      tasks.push(db.collection('services').bulkWrite(ops, { ordered: false }));
     }
 
-    // 3. Gallery
+    // 3. Gallery (batch bulkWrite)
     if (Array.isArray(store.gallery) && store.gallery.length > 0) {
-      for (const gal of store.gallery) {
+      const ops = store.gallery.map((gal: any) => {
         const item = { ...gal };
         delete item._id;
-        await db.collection('gallery').updateOne(
-          { id: gal.id },
-          { $set: item },
-          { upsert: true }
-        );
-      }
+        return {
+          updateOne: {
+            filter: { id: gal.id },
+            update: { $set: item },
+            upsert: true,
+          },
+        };
+      });
+      tasks.push(db.collection('gallery').bulkWrite(ops, { ordered: false }));
     }
 
-    // 4. FAQs
+    // 4. FAQs (batch bulkWrite)
     if (Array.isArray(store.faqs) && store.faqs.length > 0) {
-      for (const faq of store.faqs) {
+      const ops = store.faqs.map((faq: any) => {
         const item = { ...faq };
         delete item._id;
-        await db.collection('faqs').updateOne(
-          { id: faq.id },
-          { $set: item },
-          { upsert: true }
-        );
-      }
+        return {
+          updateOne: {
+            filter: { id: faq.id },
+            update: { $set: item },
+            upsert: true,
+          },
+        };
+      });
+      tasks.push(db.collection('faqs').bulkWrite(ops, { ordered: false }));
     }
 
-    // 5. Enquiries
+    // 5. Enquiries (batch bulkWrite)
     if (Array.isArray(store.enquiries) && store.enquiries.length > 0) {
-      for (const enq of store.enquiries) {
+      const ops = store.enquiries.map((enq: any) => {
         const item = { ...enq };
         delete item._id;
-        await db.collection('enquiries').updateOne(
-          { id: enq.id },
-          { $set: item },
-          { upsert: true }
-        );
-      }
+        return {
+          updateOne: {
+            filter: { id: enq.id },
+            update: { $set: item },
+            upsert: true,
+          },
+        };
+      });
+      tasks.push(db.collection('enquiries').bulkWrite(ops, { ordered: false }));
     }
 
-    // 6. Notifications
+    // 6. Notifications (batch bulkWrite)
     if (Array.isArray(store.notifications) && store.notifications.length > 0) {
-      for (const notif of store.notifications) {
+      const ops = store.notifications.map((notif: any) => {
         const item = { ...notif };
         delete item._id;
-        await db.collection('notifications').updateOne(
-          { id: notif.id },
-          { $set: item },
-          { upsert: true }
-        );
-      }
+        return {
+          updateOne: {
+            filter: { id: notif.id },
+            update: { $set: item },
+            upsert: true,
+          },
+        };
+      });
+      tasks.push(db.collection('notifications').bulkWrite(ops, { ordered: false }));
     }
 
+    await Promise.all(tasks);
+    cachedCounts = null;
     return { success: true, message: 'All website data synchronized to MongoDB successfully' };
   } catch (err: any) {
     return { success: false, message: err.message || 'Sync failed' };

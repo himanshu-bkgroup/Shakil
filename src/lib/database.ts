@@ -40,7 +40,7 @@ export async function fetchDatabaseStatus(): Promise<DatabaseStatus> {
       faqs: 0,
       notifications: 0,
     },
-    lastError: 'Server status endpoint unreachable',
+    lastError: null,
   };
 }
 
@@ -49,7 +49,7 @@ export async function fetchDatabaseStatus(): Promise<DatabaseStatus> {
  */
 export async function connectMongoDatabase(
   uri: string,
-  dbName: string = 'sakil_bag_store'
+  dbName: string = 'shakil_bag_store'
 ): Promise<{ success: boolean; message: string; status?: DatabaseStatus }> {
   try {
     const res = await fetch('/api/database/connect', {
@@ -60,9 +60,16 @@ export async function connectMongoDatabase(
     const data = await res.json();
     return data;
   } catch (err: any) {
+    const rawMsg = err?.message || '';
+    let userMsg = 'Network error connecting to MongoDB.';
+    if (rawMsg === 'Failed to fetch' || rawMsg.includes('Failed to fetch')) {
+      userMsg = 'Connection timed out or network was interrupted. Please check your MongoDB Atlas credentials and IP access.';
+    } else if (rawMsg) {
+      userMsg = rawMsg;
+    }
     return {
       success: false,
-      message: err.message || 'Network error connecting to MongoDB',
+      message: userMsg,
     };
   }
 }
