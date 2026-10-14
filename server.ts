@@ -197,7 +197,7 @@ app.post('/api/database/connect', async (req, res) => {
     const store = readStore();
     syncStoreToMongo(store)
       .then(() => {
-        broadcastChange('sync', { database: dbName });
+        broadcastRealtimeUpdate('sync', { database: dbName });
       })
       .catch((err) => {
         console.warn('[MongoDB] Initial migration sync note:', err);
