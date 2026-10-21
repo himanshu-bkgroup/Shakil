@@ -31,7 +31,8 @@ import {
   mongoMarkNotificationRead,
 } from './server/mongo';
 
-dotenv.config();
+dotenv.config({ override: true });
+process.env.DISABLE_HMR = 'true';
 
 const app = express();
 const PORT = 3000;
@@ -765,7 +766,13 @@ async function startServer() {
     });
   } else {
     const vite = await createViteServer({
-      server: { middlewareMode: true, host: '0.0.0.0', port: PORT },
+      server: {
+        middlewareMode: true,
+        host: '0.0.0.0',
+        port: PORT,
+        hmr: false,
+        watch: null,
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

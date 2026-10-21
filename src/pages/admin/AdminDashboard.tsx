@@ -94,7 +94,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
   // MongoDB / Database States
   const [dbStatus, setDbStatus] = useState<DatabaseStatus | null>(null);
   const [mongoUriInput, setMongoUriInput] = useState('');
-  const [mongoDbNameInput, setMongoDbNameInput] = useState('sakil_bag_store');
+  const [mongoDbNameInput, setMongoDbNameInput] = useState('shakil_bag_store');
   const [dbConnecting, setDbConnecting] = useState(false);
   const [dbSyncing, setDbSyncing] = useState(false);
   const [dbActionMsg, setDbActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -118,26 +118,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
   const [copiedReviewTemplate, setCopiedReviewTemplate] = useState(false);
   const [copiedKeywordList, setCopiedKeywordList] = useState(false);
 
+  const refreshStatusOnly = async () => {
+    try {
+      const statusData = await fetchDatabaseStatus();
+      if (statusData) setDbStatus(statusData);
+    } catch {}
+  };
+
   const loadAllData = async () => {
+    // 1. Fetch DB status immediately so header updates in milliseconds
+    refreshStatusOnly();
+
     try {
       const [sData, srvData, enqData, galData, faqData, anaData, notifData, statusData] = await Promise.all([
-        fetchBusinessSettings(),
-        fetchServices(),
-        fetchEnquiries(),
-        fetchGallery(),
-        fetchFAQs(),
-        fetchAnalyticsEvents(),
-        fetchNotifications(),
-        fetchDatabaseStatus(),
+        fetchBusinessSettings().catch(() => null),
+        fetchServices().catch(() => []),
+        fetchEnquiries().catch(() => []),
+        fetchGallery().catch(() => []),
+        fetchFAQs().catch(() => []),
+        fetchAnalyticsEvents().catch(() => []),
+        fetchNotifications().catch(() => []),
+        fetchDatabaseStatus().catch(() => null),
       ]);
-      setSettings(sData);
-      setServices(srvData);
-      setEnquiries(enqData);
-      setGallery(galData);
-      setFaqs(faqData);
-      setAnalytics(anaData);
-      setNotifications(notifData);
-      setDbStatus(statusData);
+      if (sData) setSettings(sData);
+      if (srvData) setServices(srvData);
+      if (enqData) setEnquiries(enqData);
+      if (galData) setGallery(galData);
+      if (faqData) setFaqs(faqData);
+      if (anaData) setAnalytics(anaData);
+      if (notifData) setNotifications(notifData);
+      if (statusData) setDbStatus(statusData);
 
       // Seed server persistent store if needed
       fetch('/api/sync', {
@@ -216,12 +226,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
   useEffect(() => {
     loadAllData();
 
-    // Listen for realtime simulated enquiries
-    const handleNewEnquiry = (e: any) => {
+    // Periodic status refresh every 10 seconds to keep connection state live
+    const intervalId = setInterval(() => {
+      refreshStatusOnly();
+    }, 10000);
+
+    // Listen for realtime data updates & enquiries
+    const handleRefresh = () => {
       loadAllData();
     };
-    window.addEventListener('sakil_new_enquiry', handleNewEnquiry);
-    return () => window.removeEventListener('sakil_new_enquiry', handleNewEnquiry);
+    const handleStatusSync = () => {
+      refreshStatusOnly();
+    };
+
+    window.addEventListener('sakil_new_enquiry', handleRefresh);
+    window.addEventListener('sakil_data_updated', handleRefresh);
+    window.addEventListener('sakil_data_sync', handleStatusSync);
+    window.addEventListener('focus', handleStatusSync);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('sakil_new_enquiry', handleRefresh);
+      window.removeEventListener('sakil_data_updated', handleRefresh);
+      window.removeEventListener('sakil_data_sync', handleStatusSync);
+      window.removeEventListener('focus', handleStatusSync);
+    };
   }, []);
 
   const triggerSaveAlert = (msg = 'Changes saved successfully!') => {
@@ -1867,7 +1896,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                     type="text"
                     value={mongoUriInput}
                     onChange={(e) => setMongoUriInput(e.target.value)}
-                    placeholder="mongodb+srv://shakil:<password>@cluster0.abcde.mongodb.net/sakil_bag_store?retryWrites=true&w=majority"
+                    placeholder="mongodb+srv://shakil_bag_store:<password>@cluster0.1z1yfwx.mongodb.net/?appName=Cluster0"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-800 bg-neutral-950 text-white text-xs font-mono focus:border-orange-500 focus:outline-none"
                   />
                   <p className="text-[11px] text-neutral-500 mt-1">
@@ -1884,7 +1913,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                       type="text"
                       value={mongoDbNameInput}
                       onChange={(e) => setMongoDbNameInput(e.target.value)}
-                      placeholder="sakil_bag_store"
+                      placeholder="shakil_bag_store"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-800 bg-neutral-950 text-white text-xs font-mono focus:border-orange-500 focus:outline-none"
                     />
                   </div>

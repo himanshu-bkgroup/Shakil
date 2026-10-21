@@ -3,6 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Ignore benign Vite HMR WebSocket connection errors in cloud/iframe proxy
+      window.addEventListener('unhandledrejection', function(e) {
+        var msg = (e && e.reason && (e.reason.message || String(e.reason))) || '';
+        if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('vite') !== -1) {
+          e.preventDefault();
+        }
+      });
+      window.addEventListener('error', function(e) {
+        var msg = (e && (e.message || '')) || '';
+        if (msg.indexOf('WebSocket') !== -1) {
+          e.preventDefault();
+        }
+      });
+    </script>
     <title>SAKIL BAG STORE - Trolley Bag Repair & Parts Specialist Noida</title>
     <meta name="description" content="Professional trolley bag repair, trolley wheels replacement, handles, locks, luggage repair and customized bags in Sector 22, Noida. Run by Mohd Shakil." />
     <meta name="keywords" content="trolley bag repair noida, trolley bag repair near me, trolley wheels replacement noida, trolley wheels shop noida sector 22, trolley handle repair noida, trolley lock repair noida, luggage bag repair noida, american tourister repair noida, samsonite trolley repair noida, VIP trolley repair noida, skybags repair noida, bag repair shop sector 22 noida, sakil bag store, mohd shakil bag repair" />

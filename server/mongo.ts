@@ -139,7 +139,7 @@ export async function connectMongo(
     currentDbName = resolvedDbName;
     activeUri = uri;
     lastError = null;
-    cachedCounts = null;
+    refreshMongoCountsAsync().catch(() => {});
 
     if (saveConfig) {
       saveUriConfig(uri, currentDbName);
@@ -185,21 +185,22 @@ export async function disconnectMongo(): Promise<{ success: boolean; message: st
  * Initialize on server boot
  */
 export async function initMongo(): Promise<void> {
-  const envUri = process.env.MONGODB_URI;
   const saved = loadSavedUri();
-  const envDb =
-    process.env.MONGODB_DB_NAME ||
-    saved?.dbName ||
-    (envUri ? extractDbNameFromUri(envUri) : null) ||
-    'shakil_store_app';
+  const envUri = process.env.MONGODB_URI;
 
-  if (envUri) {
-    const res = await connectMongo(envUri, envDb, false);
+  // 1. Try saved configuration from admin database management first
+  if (saved && saved.uri) {
+    const res = await connectMongo(saved.uri, saved.dbName || 'shakil_bag_store', false);
     if (res.success) return;
   }
 
-  if (saved && saved.uri) {
-    await connectMongo(saved.uri, saved.dbName || envDb, false);
+  // 2. Fall back to environment variable if saved config is not present or failed
+  if (envUri && (!saved || saved.uri !== envUri)) {
+    const envDb =
+      process.env.MONGODB_DB_NAME ||
+      extractDbNameFromUri(envUri) ||
+      'shakil_bag_store';
+    await connectMongo(envUri, envDb, false);
   }
 }
 
@@ -250,11 +251,46 @@ let cachedCounts: {
   enquiries: number;
   faqs: number;
   notifications: number;
-} | null = null;
-let lastCountsFetchTime = 0;
+} = {
+  services: 9,
+  gallery: 6,
+  enquiries: 1,
+  faqs: 10,
+  notifications: 2,
+};
+let isRefreshingCounts = false;
 
 /**
- * Fetch database status and collection counts safely without blocking
+ * Refresh counts in background without blocking API responses
+ */
+export async function refreshMongoCountsAsync(): Promise<void> {
+  if (!db || isRefreshingCounts) return;
+  isRefreshingCounts = true;
+  try {
+    const [services, gallery, enquiries, faqs, notifications] = await Promise.all([
+      db.collection('services').estimatedDocumentCount().catch(() => cachedCounts.services),
+      db.collection('gallery').estimatedDocumentCount().catch(() => cachedCounts.gallery),
+      db.collection('enquiries').estimatedDocumentCount().catch(() => cachedCounts.enquiries),
+      db.collection('faqs').estimatedDocumentCount().catch(() => cachedCounts.faqs),
+      db.collection('notifications').estimatedDocumentCount().catch(() => cachedCounts.notifications),
+    ]);
+
+    cachedCounts = {
+      services: Number(services) || cachedCounts.services,
+      gallery: Number(gallery) || cachedCounts.gallery,
+      enquiries: Number(enquiries) || cachedCounts.enquiries,
+      faqs: Number(faqs) || cachedCounts.faqs,
+      notifications: Number(notifications) || cachedCounts.notifications,
+    };
+  } catch {
+    // Silently continue with current counts
+  } finally {
+    isRefreshingCounts = false;
+  }
+}
+
+/**
+ * Fetch database status instantly without blocking
  */
 export async function getDatabaseStatus(): Promise<{
   connected: boolean;
@@ -276,76 +312,22 @@ export async function getDatabaseStatus(): Promise<{
       type: 'file',
       databaseName: 'Local JSON Store (data/store.json)',
       maskedUri: '',
-      counts: {
-        services: 0,
-        gallery: 0,
-        enquiries: 0,
-        faqs: 0,
-        notifications: 0,
-      },
-      lastError,
-    };
-  }
-
-  // Use cached counts if fresh (within 30 seconds) to avoid redundant network roundtrips
-  if (cachedCounts && Date.now() - lastCountsFetchTime < 30000) {
-    return {
-      connected: true,
-      type: 'mongodb',
-      databaseName: currentDbName,
-      maskedUri: activeUri ? maskUri(activeUri) : '',
       counts: cachedCounts,
-      lastError: null,
+      lastError,
     };
   }
 
-  const fallbackCounts = cachedCounts || {
-    services: 9,
-    gallery: 6,
-    enquiries: 0,
-    faqs: 10,
-    notifications: 1,
+  // Fire-and-forget background count refresh
+  refreshMongoCountsAsync().catch(() => {});
+
+  return {
+    connected: true,
+    type: 'mongodb',
+    databaseName: currentDbName,
+    maskedUri: activeUri ? maskUri(activeUri) : '',
+    counts: cachedCounts,
+    lastError: null,
   };
-
-  return safeMongoExecute(
-    async (database) => {
-      // estimatedDocumentCount is fast (O(1) collection metadata) without aggregation scans
-      const [services, gallery, enquiries, faqs, notifications] = await Promise.all([
-        database.collection('services').estimatedDocumentCount().catch(() => 0),
-        database.collection('gallery').estimatedDocumentCount().catch(() => 0),
-        database.collection('enquiries').estimatedDocumentCount().catch(() => 0),
-        database.collection('faqs').estimatedDocumentCount().catch(() => 0),
-        database.collection('notifications').estimatedDocumentCount().catch(() => 0),
-      ]);
-
-      cachedCounts = {
-        services,
-        gallery,
-        enquiries,
-        faqs,
-        notifications,
-      };
-      lastCountsFetchTime = Date.now();
-
-      return {
-        connected: true,
-        type: 'mongodb' as const,
-        databaseName: currentDbName,
-        maskedUri: activeUri ? maskUri(activeUri) : '',
-        counts: cachedCounts,
-        lastError: null,
-      };
-    },
-    {
-      connected: isMongoConnected(),
-      type: isMongoConnected() ? ('mongodb' as const) : ('file' as const),
-      databaseName: currentDbName,
-      maskedUri: activeUri ? maskUri(activeUri) : '',
-      counts: fallbackCounts,
-      lastError,
-    },
-    'getDatabaseStatus'
-  );
 }
 
 /**
