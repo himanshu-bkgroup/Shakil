@@ -605,9 +605,24 @@ export async function saveService(service: Service): Promise<void> {
     targetImageUrl = await uploadImageToServer(targetImageUrl, service.slug || service.name);
   }
 
+  let galleryUrls = service.gallery;
+  if (Array.isArray(galleryUrls)) {
+    const processedGallery: string[] = [];
+    for (const img of galleryUrls) {
+      if (img && img.startsWith('data:image')) {
+        const uploaded = await uploadImageToServer(img, `${service.slug || service.name}-gallery`);
+        processedGallery.push(uploaded || img);
+      } else if (img) {
+        processedGallery.push(img);
+      }
+    }
+    galleryUrls = processedGallery;
+  }
+
   const updatedService: Service = {
     ...service,
     image_url: targetImageUrl,
+    gallery: galleryUrls,
   };
 
   const services = await fetchServices();
@@ -810,6 +825,24 @@ export async function deleteGalleryItem(itemId: string): Promise<void> {
   }
 
   await setPersistentData(STORAGE_KEYS.GALLERY, filtered);
+}
+
+export async function bulkSaveGalleryItems(newItems: GalleryItem[]): Promise<void> {
+  if (!newItems || newItems.length === 0) return;
+  const current = await fetchGallery();
+  const updatedGallery = [...newItems, ...current];
+
+  try {
+    await fetch('/api/gallery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedGallery),
+    });
+  } catch (e) {
+    console.warn('Server bulk save gallery error:', e);
+  }
+
+  await setPersistentData(STORAGE_KEYS.GALLERY, updatedGallery);
 }
 
 export async function fetchFAQs(): Promise<FAQItem[]> {

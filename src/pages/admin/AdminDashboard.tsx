@@ -19,6 +19,7 @@ import {
   deleteEnquiry,
   fetchGallery,
   saveGalleryItem,
+  bulkSaveGalleryItems,
   deleteGalleryItem,
   fetchFAQs,
   saveFAQItem,
@@ -31,6 +32,8 @@ import {
 } from '../../lib/supabase';
 import { EnquiryDetailModal } from './EnquiryDetailModal';
 import { ImageUploadInput } from '../../components/ImageUploadInput';
+import { BulkSingleImageUpload } from '../../components/admin/BulkSingleImageUpload';
+import { ServiceGalleryManagerModal } from '../../components/admin/ServiceGalleryManagerModal';
 import {
   fetchDatabaseStatus,
   connectMongoDatabase,
@@ -70,6 +73,9 @@ import {
   Globe,
   MapPin,
   TrendingUp,
+  Layers,
+  UploadCloud,
+  X,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -93,7 +99,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
 
   // MongoDB / Database States
   const [dbStatus, setDbStatus] = useState<DatabaseStatus | null>(null);
-  const [mongoUriInput, setMongoUriInput] = useState('');
+  const [mongoUriInput, setMongoUriInput] = useState('mongodb+srv://shakil_bag_store:Bhavkancli02@cluster0.1z1yfwx.mongodb.net/');
   const [mongoDbNameInput, setMongoDbNameInput] = useState('shakil_bag_store');
   const [dbConnecting, setDbConnecting] = useState(false);
   const [dbSyncing, setDbSyncing] = useState(false);
@@ -113,8 +119,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
 
   // Editing items
   const [editingService, setEditingService] = useState<Service | null>(null);
+  const [serviceForGallery, setServiceForGallery] = useState<Service | null>(null);
   const [editingGallery, setEditingGallery] = useState<GalleryItem | null>(null);
   const [editingFaq, setEditingFaq] = useState<FAQItem | null>(null);
+  const [galleryServiceFilter, setGalleryServiceFilter] = useState('ALL');
   const [copiedReviewTemplate, setCopiedReviewTemplate] = useState(false);
   const [copiedKeywordList, setCopiedKeywordList] = useState(false);
 
@@ -172,12 +180,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
     setDbConnecting(true);
     setDbActionMsg(null);
     try {
-      const res = await connectMongoDatabase(mongoUriInput.trim(), mongoDbNameInput.trim() || 'sakil_bag_store');
+      const res = await connectMongoDatabase(mongoUriInput.trim(), mongoDbNameInput.trim() || 'shakil_bag_store');
       if (res.success) {
         setDbActionMsg({ type: 'success', text: res.message || 'Connected to MongoDB Atlas successfully!' });
         if (res.status) setDbStatus(res.status);
         await loadAllData();
-        setMongoUriInput('');
+        // Keep active MongoDB URI displayed in input field
+        setMongoUriInput(mongoUriInput.trim() || 'mongodb+srv://shakil_bag_store:Bhavkancli02@cluster0.1z1yfwx.mongodb.net/');
         triggerSaveAlert('Connected to MongoDB database successfully!');
       } else {
         setDbActionMsg({ type: 'error', text: res.message || 'Failed to connect. Please check credentials and IP whitelist.' });
@@ -836,68 +845,202 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {services.map((srv) => (
-                <div
-                  key={srv.id}
-                  className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5 space-y-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-heading text-base font-bold text-white">{srv.name}</h3>
-                      <span className="text-[11px] font-mono text-neutral-500">/{srv.slug}</span>
+              {services.map((srv) => {
+                const srvGallery = srv.gallery || [];
+                return (
+                  <div
+                    key={srv.id}
+                    className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-5 space-y-4 flex flex-col justify-between"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          {srv.image_url ? (
+                            <img
+                              src={srv.image_url}
+                              alt={srv.name}
+                              className="h-12 w-12 rounded-xl object-cover border border-neutral-800 shrink-0"
+                            />
+                          ) : (
+                            <div className="h-12 w-12 rounded-xl bg-neutral-950 border border-neutral-800 flex items-center justify-center text-orange-400 shrink-0">
+                              <Wrench className="h-5 w-5" />
+                            </div>
+                          )}
+                          <div>
+                            <h3 className="font-heading text-base font-bold text-white">{srv.name}</h3>
+                            <span className="text-[11px] font-mono text-neutral-500">/{srv.slug}</span>
+                          </div>
+                        </div>
+
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-semibold shrink-0 ${
+                          srv.active ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-neutral-800 text-neutral-500'
+                        }`}>
+                          {srv.active ? 'ACTIVE' : 'INACTIVE'}
+                        </span>
+                      </div>
+
+                      <p className="text-xs text-neutral-400 leading-relaxed line-clamp-2">
+                        {srv.description}
+                      </p>
+
+                      {/* Service Photo Gallery Strip Preview */}
+                      <div className="rounded-xl border border-neutral-800/80 bg-neutral-950/70 p-3 space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-400 font-semibold flex items-center gap-1.5">
+                            <ImageIcon className="h-3.5 w-3.5 text-orange-400" />
+                            <span>Service Gallery ({srvGallery.length} Photos)</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setServiceForGallery(srv)}
+                            className="text-orange-400 hover:text-orange-300 font-bold hover:underline inline-flex items-center gap-1"
+                          >
+                            <Plus className="h-3 w-3" />
+                            <span>Upload / Manage</span>
+                          </button>
+                        </div>
+
+                        {srvGallery.length > 0 ? (
+                          <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                            {srvGallery.slice(0, 5).map((img, i) => (
+                              <img
+                                key={i}
+                                src={img}
+                                alt={`Gallery ${i + 1}`}
+                                className="h-12 w-12 rounded-lg object-cover border border-neutral-800 shrink-0 hover:scale-105 transition-transform cursor-pointer"
+                                onClick={() => setServiceForGallery(srv)}
+                              />
+                            ))}
+                            {srvGallery.length > 5 && (
+                              <div
+                                onClick={() => setServiceForGallery(srv)}
+                                className="h-12 w-12 rounded-lg bg-neutral-900 border border-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-400 shrink-0 cursor-pointer hover:bg-neutral-850"
+                              >
+                                +{srvGallery.length - 5}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-[11px] text-neutral-500 italic">
+                            No photos uploaded for this service yet. Click "Upload / Manage" to add bulk or single photos.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl bg-neutral-950 p-2.5 text-[11px] text-neutral-400 font-mono">
+                        <span className="text-neutral-500 block mb-0.5">WhatsApp Template:</span>
+                        <div className="truncate">{srv.whatsapp_template}</div>
+                      </div>
                     </div>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
-                      srv.active ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-neutral-800 text-neutral-500'
-                    }`}>
-                      {srv.active ? 'ACTIVE' : 'INACTIVE'}
-                    </span>
-                  </div>
 
-                  <p className="text-xs text-neutral-400 leading-relaxed">
-                    {srv.description}
-                  </p>
+                    <div className="pt-2 flex items-center justify-between border-t border-neutral-800/80">
+                      <button
+                        onClick={async () => {
+                          const updated = { ...srv, active: !srv.active };
+                          await saveService(updated);
+                          setServices(services.map(s => s.id === srv.id ? updated : s));
+                          triggerSaveAlert(`Toggled status for ${srv.name}`);
+                        }}
+                        className="text-xs font-medium text-neutral-300 hover:text-white"
+                      >
+                        {srv.active ? 'Disable' : 'Enable'}
+                      </button>
 
-                  <div className="rounded-xl bg-neutral-950 p-2.5 text-[11px] text-neutral-400 font-mono">
-                    <span className="text-neutral-500 block mb-0.5">WhatsApp Template:</span>
-                    <div className="truncate">{srv.whatsapp_template}</div>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => setServiceForGallery(srv)}
+                          className="text-xs font-semibold text-orange-400 hover:underline inline-flex items-center gap-1"
+                        >
+                          <Layers className="h-3 w-3" />
+                          <span>Gallery ({srvGallery.length})</span>
+                        </button>
+                        <button
+                          onClick={() => setEditingService(srv)}
+                          className="text-xs font-semibold text-neutral-300 hover:text-white inline-flex items-center gap-1"
+                        >
+                          <Edit2 className="h-3 w-3" />
+                          <span>Edit Details</span>
+                        </button>
+                      </div>
+                    </div>
                   </div>
-
-                  <div className="pt-2 flex items-center justify-between border-t border-neutral-800/80">
-                    <button
-                      onClick={async () => {
-                        const updated = { ...srv, active: !srv.active };
-                        await saveService(updated);
-                        setServices(services.map(s => s.id === srv.id ? updated : s));
-                        triggerSaveAlert(`Toggled status for ${srv.name}`);
-                      }}
-                      className="text-xs font-medium text-neutral-300 hover:text-white"
-                    >
-                      {srv.active ? 'Disable' : 'Enable'}
-                    </button>
-                    <button
-                      onClick={() => setEditingService(srv)}
-                      className="text-xs font-semibold text-orange-400 hover:underline inline-flex items-center gap-1"
-                    >
-                      <Edit2 className="h-3 w-3" />
-                      <span>Edit Description & Template</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Service Edit Modal */}
             {editingService && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-                <div className="max-w-lg w-full bg-neutral-900 border border-neutral-800 rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-                  <h3 className="font-heading text-lg font-bold text-white">Edit Service: {editingService.name}</h3>
+                <div className="max-w-2xl w-full bg-neutral-900 border border-neutral-800 rounded-3xl p-6 space-y-5 max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-start justify-between border-b border-neutral-800 pb-3">
+                    <div>
+                      <h3 className="font-heading text-lg font-bold text-white">Edit Service: {editingService.name}</h3>
+                      <p className="text-xs text-neutral-400">/{editingService.slug}</p>
+                    </div>
+                    <button onClick={() => setEditingService(null)} className="text-neutral-400 hover:text-white">
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
 
                   <ImageUploadInput
-                    label="Service Photo / Showcase Image"
+                    label="Main Cover Image"
                     value={editingService.image_url || ''}
                     onChange={(url) => setEditingService({ ...editingService, image_url: url })}
-                    helperText="Upload a photo of your repairs/parts or enter an image URL"
+                    helperText="Upload primary banner image for this service"
                   />
+
+                  {/* Bulk & Single Photo Upload for this service */}
+                  <div className="space-y-3 pt-2 border-t border-neutral-800">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-heading text-xs font-bold uppercase tracking-wider text-neutral-300 flex items-center gap-1.5">
+                        <ImageIcon className="h-4 w-4 text-orange-400" />
+                        <span>Service Gallery Photos ({editingService.gallery?.length || 0})</span>
+                      </h4>
+                    </div>
+
+                    <BulkSingleImageUpload
+                      onSingleUpload={(url) => {
+                        const updated = [...(editingService.gallery || []), url];
+                        setEditingService({ ...editingService, gallery: updated });
+                        triggerSaveAlert('Photo added to service gallery');
+                      }}
+                      onBulkUpload={(urls) => {
+                        const updated = [...(editingService.gallery || []), ...urls];
+                        setEditingService({ ...editingService, gallery: updated });
+                        triggerSaveAlert(`Added ${urls.length} photos to service gallery`);
+                      }}
+                      allowServiceSelection={false}
+                      defaultCategory="Trolley Parts"
+                      className="border-neutral-800 bg-neutral-950"
+                    />
+
+                    {/* Previews of service gallery photos */}
+                    {editingService.gallery && editingService.gallery.length > 0 && (
+                      <div className="space-y-2 pt-1">
+                        <div className="text-[11px] text-neutral-400 font-semibold">
+                          Current Photos in Service Gallery:
+                        </div>
+                        <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
+                          {editingService.gallery.map((imgUrl, i) => (
+                            <div key={i} className="group relative rounded-lg overflow-hidden border border-neutral-800 bg-neutral-950 aspect-square">
+                              <img src={imgUrl} alt={`Photo ${i + 1}`} className="h-full w-full object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const updated = (editingService.gallery || []).filter((_, idx) => idx !== i);
+                                  setEditingService({ ...editingService, gallery: updated });
+                                }}
+                                className="absolute top-1 right-1 p-1 rounded-full bg-neutral-950/80 text-neutral-400 hover:text-white"
+                                title="Remove photo"
+                              >
+                                <Trash2 className="h-3 w-3 text-rose-400" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <div>
                     <label className="block text-xs text-neutral-400 mb-1">Description</label>
@@ -905,22 +1048,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                       rows={3}
                       value={editingService.description}
                       onChange={(e) => setEditingService({ ...editingService, description: e.target.value })}
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 p-2.5 text-xs text-white"
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2.5 text-xs text-white"
                     />
                   </div>
+
                   <div>
                     <label className="block text-xs text-neutral-400 mb-1">WhatsApp Template</label>
                     <textarea
                       rows={3}
                       value={editingService.whatsapp_template}
                       onChange={(e) => setEditingService({ ...editingService, whatsapp_template: e.target.value })}
-                      className="w-full rounded-lg border border-neutral-700 bg-neutral-950 p-2.5 text-xs text-white font-mono"
+                      className="w-full rounded-xl border border-neutral-700 bg-neutral-950 p-2.5 text-xs text-white font-mono"
                     />
                   </div>
-                  <div className="flex justify-end gap-3 pt-2">
+
+                  <div className="flex justify-end gap-3 pt-3 border-t border-neutral-800">
                     <button
                       onClick={() => setEditingService(null)}
-                      className="px-4 py-2 text-xs text-neutral-400"
+                      className="px-4 py-2 text-xs text-neutral-400 hover:text-white"
                     >
                       Cancel
                     </button>
@@ -931,7 +1076,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                         setEditingService(null);
                         triggerSaveAlert('Service updated successfully');
                       }}
-                      className="px-4 py-2 rounded-lg bg-orange-600 text-xs font-bold text-white"
+                      className="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-xs font-bold text-white shadow-sm"
                     >
                       Save Service
                     </button>
@@ -975,38 +1120,123 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
               </button>
             </div>
 
-            {/* Quick Upload Dropzone Section */}
-            <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-4 sm:p-5">
-              <ImageUploadInput
-                label="Quick Photo Upload"
-                value=""
-                onChange={(uploadedUrl) => {
-                  if (uploadedUrl) {
-                    const newItem: GalleryItem = {
-                      id: 'gal-new-' + Date.now(),
-                      image_url: uploadedUrl,
-                      title: 'Luggage Repair Photo',
-                      caption: 'Work executed at Sakil Bag Store, Sector 22, Noida',
-                      category: 'Wheels',
-                      alt_text: 'Trolley bag repair Noida Mohd Shakil',
-                      display_order: gallery.length + 1,
-                      active: true,
-                    };
-                    setEditingGallery(newItem);
-                  }
-                }}
-                helperText="Select or drag & drop any photograph from your device to quickly add it to your store gallery"
-              />
+            {/* Bulk / Single Photo Upload Section with Service Assignment */}
+            <BulkSingleImageUpload
+              services={services}
+              allowServiceSelection={true}
+              onSingleUpload={async (url, meta) => {
+                const targetService = services.find(s => s.id === meta?.service_id);
+                const newItem: GalleryItem = {
+                  id: 'gal-' + Date.now(),
+                  image_url: url,
+                  title: meta?.title || (targetService ? `${targetService.name} Photo` : 'Luggage Repair Photo'),
+                  caption: targetService ? `Repair work for ${targetService.name} in Noida` : 'Work executed at Sakil Bag Store, Sector 22, Noida',
+                  category: (meta?.category as any) || 'Wheels',
+                  service_id: meta?.service_id,
+                  service_name: targetService?.name,
+                  alt_text: `${targetService?.name || 'Trolley bag repair'} Noida Mohd Shakil`,
+                  display_order: gallery.length + 1,
+                  active: true,
+                  created_at: new Date().toISOString(),
+                };
+
+                await saveGalleryItem(newItem);
+
+                // If a service was chosen, also add to that service's gallery
+                if (targetService) {
+                  const updatedGallery = [...(targetService.gallery || []), url];
+                  await saveService({
+                    ...targetService,
+                    gallery: updatedGallery,
+                  });
+                }
+
+                await loadAllData();
+                triggerSaveAlert('Photo uploaded and added to gallery successfully');
+              }}
+              onBulkUpload={async (urls, meta) => {
+                const targetService = services.find(s => s.id === meta?.service_id);
+                const newItems: GalleryItem[] = urls.map((url, i) => ({
+                  id: `gal-bulk-${Date.now()}-${i}`,
+                  image_url: url,
+                  title: targetService ? `${targetService.name} Photo ${i + 1}` : `Repair Photograph ${i + 1}`,
+                  caption: targetService ? `Photo for ${targetService.name} at Sakil Bag Store` : 'Work executed at Sakil Bag Store, Sector 22, Noida',
+                  category: (meta?.category as any) || 'Wheels',
+                  service_id: meta?.service_id,
+                  service_name: targetService?.name,
+                  alt_text: `${targetService?.name || 'Trolley repair'} Noida`,
+                  display_order: gallery.length + i + 1,
+                  active: true,
+                  created_at: new Date().toISOString(),
+                }));
+
+                await bulkSaveGalleryItems(newItems);
+
+                // If a service was chosen, also append all photos to that service's gallery
+                if (targetService) {
+                  const updatedGallery = [...(targetService.gallery || []), ...urls];
+                  await saveService({
+                    ...targetService,
+                    gallery: updatedGallery,
+                  });
+                }
+
+                await loadAllData();
+                triggerSaveAlert(`Bulk uploaded ${urls.length} photos successfully!`);
+              }}
+            />
+
+            {/* Gallery Filters: by Service and Category */}
+            <div className="flex flex-wrap items-center gap-2 pt-2">
+              <span className="text-xs text-neutral-400 font-semibold mr-1">Filter by Service:</span>
+              <button
+                type="button"
+                onClick={() => setGalleryServiceFilter('ALL')}
+                className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                  galleryServiceFilter === 'ALL'
+                    ? 'bg-orange-600 text-white'
+                    : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+                }`}
+              >
+                All Services ({gallery.length})
+              </button>
+              {services.map(s => {
+                const count = gallery.filter(g => g.service_id === s.id).length;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => setGalleryServiceFilter(s.id)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${
+                      galleryServiceFilter === s.id
+                        ? 'bg-orange-600 text-white'
+                        : 'bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800'
+                    }`}
+                  >
+                    {s.name} ({count})
+                  </button>
+                );
+              })}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {gallery.map((item) => (
+              {(galleryServiceFilter === 'ALL'
+                ? gallery
+                : gallery.filter(g => g.service_id === galleryServiceFilter)
+              ).map((item) => (
                 <div key={item.id} className="rounded-2xl border border-neutral-800 bg-neutral-900/60 overflow-hidden flex flex-col justify-between">
                   <div className="relative h-44 w-full bg-neutral-950">
                     <img src={item.image_url} alt={item.alt_text} className="h-full w-full object-cover" />
-                    <span className="absolute top-2 left-2 rounded bg-neutral-950/80 px-2 py-0.5 text-[10px] text-orange-400 font-mono">
-                      {item.category}
-                    </span>
+                    <div className="absolute top-2 left-2 flex flex-wrap gap-1">
+                      <span className="rounded bg-neutral-950/80 px-2 py-0.5 text-[10px] text-orange-400 font-mono">
+                        {item.category}
+                      </span>
+                      {item.service_name && (
+                        <span className="rounded bg-orange-950/90 border border-orange-800/80 px-2 py-0.5 text-[10px] text-orange-300 font-semibold truncate max-w-[140px]">
+                          {item.service_name}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="p-4 space-y-2">
                     <h3 className="font-heading text-sm font-bold text-white">{item.title}</h3>
@@ -1845,7 +2075,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                 <div className="p-3.5 rounded-xl bg-neutral-950/50 border border-neutral-800">
                   <div className="text-[10px] uppercase font-semibold text-neutral-400">Database Name</div>
                   <div className="font-mono text-sm text-orange-400 font-bold mt-1">
-                    {dbStatus?.databaseName || 'sakil_bag_store'}
+                    {dbStatus?.databaseName || 'shakil_bag_store'}
                   </div>
                 </div>
 
@@ -1859,14 +2089,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                 <div className="p-3.5 rounded-xl bg-neutral-950/50 border border-neutral-800">
                   <div className="text-[10px] uppercase font-semibold text-neutral-400">Services in DB</div>
                   <div className="font-heading text-lg font-bold text-white mt-1">
-                    {dbStatus?.connected ? dbStatus.counts.services : services.length} Services
+                    {dbStatus?.connected ? (dbStatus.counts?.services ?? (services?.length || 0)) : (services?.length || 0)} Services
                   </div>
                 </div>
 
                 <div className="p-3.5 rounded-xl bg-neutral-950/50 border border-neutral-800">
                   <div className="text-[10px] uppercase font-semibold text-neutral-400">Gallery Items in DB</div>
                   <div className="font-heading text-lg font-bold text-white mt-1">
-                    {dbStatus?.connected ? dbStatus.counts.gallery : gallery.length} Photos
+                    {dbStatus?.connected ? (dbStatus.counts?.gallery ?? (gallery?.length || 0)) : (gallery?.length || 0)} Photos
                   </div>
                 </div>
               </div>
@@ -1896,7 +2126,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                     type="text"
                     value={mongoUriInput}
                     onChange={(e) => setMongoUriInput(e.target.value)}
-                    placeholder="mongodb+srv://shakil_bag_store:<password>@cluster0.1z1yfwx.mongodb.net/?appName=Cluster0"
+                    placeholder="mongodb+srv://shakil_bag_store:Bhavkancli02@cluster0.1z1yfwx.mongodb.net/"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-800 bg-neutral-950 text-white text-xs font-mono focus:border-orange-500 focus:outline-none"
                   />
                   <p className="text-[11px] text-neutral-500 mt-1">
@@ -2032,6 +2262,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
           </div>
         )}
       </main>
+
+      {/* Service Photo Gallery Manager Modal (Bulk / Single Upload) */}
+      {serviceForGallery && (
+        <ServiceGalleryManagerModal
+          service={serviceForGallery}
+          allServices={services}
+          onClose={() => setServiceForGallery(null)}
+          onSaveService={async (updated) => {
+            await saveService(updated);
+            await loadAllData();
+          }}
+          onAddGalleryItem={async (item) => {
+            await saveGalleryItem(item);
+            await loadAllData();
+          }}
+        />
+      )}
 
       {/* Enquiry Detail Modal */}
       {selectedEnquiry && settings && (

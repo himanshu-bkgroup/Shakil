@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { MapPin, Phone, MessageSquare, ArrowLeft, Disc, MoveVertical, KeyRound, Wrench, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { MapPin, Phone, MessageSquare, ArrowLeft, Disc, MoveVertical, KeyRound, Wrench, ShieldCheck, CheckCircle2, X, Image as ImageIcon } from 'lucide-react';
 import type { BusinessSettings, Service } from '../types';
 import { UniversalRequirementForm } from '../components/UniversalRequirementForm';
 import { buildWhatsAppUrl } from '../lib/whatsapp';
@@ -19,6 +19,8 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
   services,
   onNavigate,
 }) => {
+  const [selectedLightboxImg, setSelectedLightboxImg] = useState<string | null>(null);
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     trackAnalyticsEvent({
@@ -476,6 +478,49 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
               </div>
             </div>
 
+            {/* Service Photo Gallery Showcase */}
+            {matchingService?.gallery && matchingService.gallery.length > 0 && (
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900/60 p-6 sm:p-8 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-orange-400 mb-1">
+                      Workshop Gallery
+                    </div>
+                    <h2 className="font-heading text-lg sm:text-xl font-bold text-white">
+                      Real Repair Photos & Genuine Spare Parts
+                    </h2>
+                  </div>
+                  <span className="text-xs font-mono text-neutral-400 px-2.5 py-1 rounded-full bg-neutral-950 border border-neutral-800">
+                    {matchingService.gallery.length} Photos
+                  </span>
+                </div>
+                <p className="text-xs text-neutral-400">
+                  Photographed on-site at SAKIL BAG STORE, Sector 22, Noida. Every repair uses precision-matched fittings.
+                </p>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
+                  {matchingService.gallery.map((imgUrl, idx) => (
+                    <div
+                      key={idx}
+                      onClick={() => setSelectedLightboxImg(imgUrl)}
+                      className="group relative rounded-xl overflow-hidden border border-neutral-800 bg-neutral-950 aspect-square cursor-pointer hover:border-orange-500/50 transition-all shadow-md"
+                    >
+                      <img
+                        src={imgUrl}
+                        alt={`${matchingService.name} repair photo ${idx + 1}`}
+                        className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="text-xs font-bold text-white bg-neutral-900/90 px-2.5 py-1 rounded-lg border border-neutral-700">
+                          Enlarge
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Store Visit & Location Box */}
             <div className="rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 to-neutral-950 p-6 sm:p-8">
               <div className="flex items-start gap-4">
@@ -527,6 +572,26 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Photo Lightbox */}
+      {selectedLightboxImg && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4 cursor-pointer backdrop-blur-sm"
+          onClick={() => setSelectedLightboxImg(null)}
+        >
+          <img
+            src={selectedLightboxImg}
+            alt="Service repair photo full size"
+            className="max-h-[90vh] max-w-[90vw] object-contain rounded-2xl border border-neutral-800"
+          />
+          <button
+            onClick={() => setSelectedLightboxImg(null)}
+            className="absolute top-4 right-4 p-2 text-white bg-neutral-900/80 hover:bg-neutral-800 rounded-full border border-neutral-700"
+          >
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

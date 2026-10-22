@@ -1,3 +1,5 @@
+import { safeFetchJson } from './apiClient';
+
 export interface DatabaseStatus {
   success: boolean;
   connected: boolean;
@@ -18,13 +20,19 @@ export interface DatabaseStatus {
  * Fetch real-time database connection status from server
  */
 export async function fetchDatabaseStatus(): Promise<DatabaseStatus> {
-  try {
-    const res = await fetch('/api/database/status');
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch (err) {
-    console.warn('Failed to fetch database status:', err);
+  const result = await safeFetchJson<DatabaseStatus>('/api/database/status');
+  if (result.ok && result.data) {
+    const data = result.data;
+    return {
+      ...data,
+      counts: {
+        services: data.counts?.services ?? 0,
+        gallery: data.counts?.gallery ?? 0,
+        enquiries: data.counts?.enquiries ?? 0,
+        faqs: data.counts?.faqs ?? 0,
+        notifications: data.counts?.notifications ?? 0,
+      },
+    };
   }
 
   return {
@@ -40,7 +48,7 @@ export async function fetchDatabaseStatus(): Promise<DatabaseStatus> {
       faqs: 0,
       notifications: 0,
     },
-    lastError: null,
+    lastError: result.error || null,
   };
 }
 
@@ -51,27 +59,23 @@ export async function connectMongoDatabase(
   uri: string,
   dbName: string = 'shakil_bag_store'
 ): Promise<{ success: boolean; message: string; status?: DatabaseStatus }> {
-  try {
-    const res = await fetch('/api/database/connect', {
+  const result = await safeFetchJson<{ success: boolean; message: string; status?: DatabaseStatus }>(
+    '/api/database/connect',
+    {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uri, dbName }),
-    });
-    const data = await res.json();
-    return data;
-  } catch (err: any) {
-    const rawMsg = err?.message || '';
-    let userMsg = 'Network error connecting to MongoDB.';
-    if (rawMsg === 'Failed to fetch' || rawMsg.includes('Failed to fetch')) {
-      userMsg = 'Connection timed out or network was interrupted. Please check your MongoDB Atlas credentials and IP access.';
-    } else if (rawMsg) {
-      userMsg = rawMsg;
     }
-    return {
-      success: false,
-      message: userMsg,
-    };
+  );
+
+  if (result.ok && result.data) {
+    return result.data;
   }
+
+  return {
+    success: false,
+    message: result.error || 'Failed to connect to MongoDB. Please verify connection string and network access.',
+  };
 }
 
 /**
@@ -82,18 +86,22 @@ export async function disconnectMongoDatabase(): Promise<{
   message: string;
   status?: DatabaseStatus;
 }> {
-  try {
-    const res = await fetch('/api/database/disconnect', {
+  const result = await safeFetchJson<{ success: boolean; message: string; status?: DatabaseStatus }>(
+    '/api/database/disconnect',
+    {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-    });
-    return await res.json();
-  } catch (err: any) {
-    return {
-      success: false,
-      message: err.message || 'Error disconnecting from MongoDB',
-    };
+    }
+  );
+
+  if (result.ok && result.data) {
+    return result.data;
   }
+
+  return {
+    success: false,
+    message: result.error || 'Failed to disconnect from MongoDB.',
+  };
 }
 
 /**
@@ -104,16 +112,20 @@ export async function syncDataToMongo(): Promise<{
   message: string;
   status?: DatabaseStatus;
 }> {
-  try {
-    const res = await fetch('/api/database/sync', {
+  const result = await safeFetchJson<{ success: boolean; message: string; status?: DatabaseStatus }>(
+    '/api/database/sync',
+    {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-    });
-    return await res.json();
-  } catch (err: any) {
-    return {
-      success: false,
-      message: err.message || 'Error syncing data to MongoDB',
-    };
+    }
+  );
+
+  if (result.ok && result.data) {
+    return result.data;
   }
+
+  return {
+    success: false,
+    message: result.error || 'Failed to sync data to MongoDB.',
+  };
 }

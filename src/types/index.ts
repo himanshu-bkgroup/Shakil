@@ -32,6 +32,7 @@ export interface Service {
   slug: string;
   description: string;
   image_url?: string;
+  gallery?: string[]; // Multiple photos for this service
   whatsapp_template: string;
   active: boolean;
   display_order: number;
@@ -87,6 +88,8 @@ export interface GalleryItem {
   title: string;
   caption?: string;
   category: 'Wheels' | 'Handles' | 'Locks' | 'Trolley Parts' | 'Bag Repair' | 'Luggage' | 'Customized Bags' | 'Store';
+  service_id?: string;
+  service_name?: string;
   alt_text: string;
   display_order: number;
   active: boolean;

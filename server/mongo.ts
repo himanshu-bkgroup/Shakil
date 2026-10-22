@@ -7,7 +7,7 @@ const CONFIG_FILE = path.join(DATA_DIR, 'db-config.json');
 
 let client: MongoClient | null = null;
 let db: Db | null = null;
-let currentDbName = 'shakil_store_app';
+let currentDbName = 'shakil_bag_store';
 let activeUri: string | null = null;
 let lastError: string | null = null;
 
@@ -39,7 +39,7 @@ function loadSavedUri(): { uri: string; dbName?: string } | null {
       if (data && data.uri) {
         return {
           uri: data.uri,
-          dbName: data.dbName || process.env.MONGODB_DB_NAME || 'shakil_store_app',
+          dbName: data.dbName || process.env.MONGODB_DB_NAME || 'shakil_bag_store',
         };
       }
     }
@@ -99,7 +99,7 @@ export async function connectMongo(
       (dbName && dbName.trim()) ||
       extractDbNameFromUri(uri) ||
       process.env.MONGODB_DB_NAME ||
-      'shakil_store_app';
+      'shakil_bag_store';
 
     console.log(`[MongoDB] Connecting to MongoDB (${maskUri(uri)})... Target DB: "${resolvedDbName}"`);
 
@@ -245,19 +245,21 @@ async function safeMongoExecute<T>(
   return fallback;
 }
 
-let cachedCounts: {
-  services: number;
-  gallery: number;
-  enquiries: number;
-  faqs: number;
-  notifications: number;
-} = {
+const defaultCounts = {
   services: 9,
   gallery: 6,
   enquiries: 1,
   faqs: 10,
   notifications: 2,
 };
+
+let cachedCounts: {
+  services: number;
+  gallery: number;
+  enquiries: number;
+  faqs: number;
+  notifications: number;
+} = { ...defaultCounts };
 let isRefreshingCounts = false;
 
 /**
@@ -267,20 +269,21 @@ export async function refreshMongoCountsAsync(): Promise<void> {
   if (!db || isRefreshingCounts) return;
   isRefreshingCounts = true;
   try {
+    const current = cachedCounts || defaultCounts;
     const [services, gallery, enquiries, faqs, notifications] = await Promise.all([
-      db.collection('services').estimatedDocumentCount().catch(() => cachedCounts.services),
-      db.collection('gallery').estimatedDocumentCount().catch(() => cachedCounts.gallery),
-      db.collection('enquiries').estimatedDocumentCount().catch(() => cachedCounts.enquiries),
-      db.collection('faqs').estimatedDocumentCount().catch(() => cachedCounts.faqs),
-      db.collection('notifications').estimatedDocumentCount().catch(() => cachedCounts.notifications),
+      db.collection('services').estimatedDocumentCount().catch(() => current.services),
+      db.collection('gallery').estimatedDocumentCount().catch(() => current.gallery),
+      db.collection('enquiries').estimatedDocumentCount().catch(() => current.enquiries),
+      db.collection('faqs').estimatedDocumentCount().catch(() => current.faqs),
+      db.collection('notifications').estimatedDocumentCount().catch(() => current.notifications),
     ]);
 
     cachedCounts = {
-      services: Number(services) || cachedCounts.services,
-      gallery: Number(gallery) || cachedCounts.gallery,
-      enquiries: Number(enquiries) || cachedCounts.enquiries,
-      faqs: Number(faqs) || cachedCounts.faqs,
-      notifications: Number(notifications) || cachedCounts.notifications,
+      services: Number(services) || current.services,
+      gallery: Number(gallery) || current.gallery,
+      enquiries: Number(enquiries) || current.enquiries,
+      faqs: Number(faqs) || current.faqs,
+      notifications: Number(notifications) || current.notifications,
     };
   } catch {
     // Silently continue with current counts
@@ -312,7 +315,7 @@ export async function getDatabaseStatus(): Promise<{
       type: 'file',
       databaseName: 'Local JSON Store (data/store.json)',
       maskedUri: '',
-      counts: cachedCounts,
+      counts: cachedCounts || { ...defaultCounts },
       lastError,
     };
   }
@@ -325,7 +328,7 @@ export async function getDatabaseStatus(): Promise<{
     type: 'mongodb',
     databaseName: currentDbName,
     maskedUri: activeUri ? maskUri(activeUri) : '',
-    counts: cachedCounts,
+    counts: cachedCounts || { ...defaultCounts },
     lastError: null,
   };
 }
@@ -434,7 +437,7 @@ export async function syncStoreToMongo(store: any): Promise<{ success: boolean; 
     }
 
     await Promise.all(tasks);
-    cachedCounts = null;
+    refreshMongoCountsAsync().catch(() => {});
     return { success: true, message: 'All website data synchronized to MongoDB successfully' };
   } catch (err: any) {
     return { success: false, message: err.message || 'Sync failed' };
