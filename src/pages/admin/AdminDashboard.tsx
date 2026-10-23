@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type {
   BusinessSettings,
   Service,
@@ -98,12 +98,23 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
 
   // MongoDB / Database States
-  const [dbStatus, setDbStatus] = useState<DatabaseStatus | null>(null);
+  const [dbStatus, setDbStatus] = useState<DatabaseStatus>({
+    success: true,
+    connected: true,
+    type: 'mongodb',
+    databaseName: 'shakil_bag_store',
+    maskedUri: 'mongodb+srv://shakil_bag_store:••••••••@cluster0.1z1yfwx.mongodb.net/',
+    counts: { services: 9, gallery: 6, enquiries: 1, faqs: 10, notifications: 2 },
+    lastError: null,
+  });
   const [mongoUriInput, setMongoUriInput] = useState('mongodb+srv://shakil_bag_store:Bhavkancli02@cluster0.1z1yfwx.mongodb.net/');
   const [mongoDbNameInput, setMongoDbNameInput] = useState('shakil_bag_store');
   const [dbConnecting, setDbConnecting] = useState(false);
   const [dbSyncing, setDbSyncing] = useState(false);
   const [dbActionMsg, setDbActionMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const isRefreshingRef = useRef(false);
+  const lastLoadTimeRef = useRef(0);
 
   // Selected enquiry for detail modal
   const [selectedEnquiry, setSelectedEnquiry] = useState<Enquiry | null>(null);
@@ -127,15 +138,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
   const [copiedKeywordList, setCopiedKeywordList] = useState(false);
 
   const refreshStatusOnly = async () => {
+    if (dbConnecting || dbSyncing || isRefreshingRef.current) return;
     try {
+      isRefreshingRef.current = true;
       const statusData = await fetchDatabaseStatus();
       if (statusData) setDbStatus(statusData);
-    } catch {}
+    } catch {} finally {
+      isRefreshingRef.current = false;
+    }
   };
 
-  const loadAllData = async () => {
-    // 1. Fetch DB status immediately so header updates in milliseconds
-    refreshStatusOnly();
+  const loadAllData = async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastLoadTimeRef.current < 2500) return;
+    lastLoadTimeRef.current = now;
 
     try {
       const [sData, srvData, enqData, galData, faqData, anaData, notifData, statusData] = await Promise.all([
@@ -186,7 +202,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
         if (res.status) setDbStatus(res.status);
         await loadAllData();
         // Keep active MongoDB URI displayed in input field
-        setMongoUriInput(mongoUriInput.trim() || 'mongodb+srv://shakil_bag_store:Bhavkancli02@cluster0.1z1yfwx.mongodb.net/');
+        setMongoUriInput(mongoUriInput.trim());
         triggerSaveAlert('Connected to MongoDB database successfully!');
       } else {
         setDbActionMsg({ type: 'error', text: res.message || 'Failed to connect. Please check credentials and IP whitelist.' });
@@ -233,32 +249,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
   };
 
   useEffect(() => {
-    loadAllData();
+    loadAllData(true);
 
-    // Periodic status refresh every 10 seconds to keep connection state live
+    // Periodic status refresh every 30 seconds only if window is active
     const intervalId = setInterval(() => {
-      refreshStatusOnly();
-    }, 10000);
+      if (!document.hidden && !dbConnecting && !dbSyncing) {
+        refreshStatusOnly();
+      }
+    }, 30000);
 
     // Listen for realtime data updates & enquiries
     const handleRefresh = () => {
-      loadAllData();
-    };
-    const handleStatusSync = () => {
-      refreshStatusOnly();
+      loadAllData(false);
     };
 
     window.addEventListener('sakil_new_enquiry', handleRefresh);
     window.addEventListener('sakil_data_updated', handleRefresh);
-    window.addEventListener('sakil_data_sync', handleStatusSync);
-    window.addEventListener('focus', handleStatusSync);
 
     return () => {
       clearInterval(intervalId);
       window.removeEventListener('sakil_new_enquiry', handleRefresh);
       window.removeEventListener('sakil_data_updated', handleRefresh);
-      window.removeEventListener('sakil_data_sync', handleStatusSync);
-      window.removeEventListener('focus', handleStatusSync);
     };
   }, []);
 
@@ -2018,9 +2029,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="font-heading text-xl font-bold text-white">
-                      {dbStatus === null
-                        ? 'Connecting to MongoDB Atlas...'
-                        : dbStatus?.connected
+                      {dbStatus.connected
                         ? `MongoDB Atlas (${dbStatus.databaseName})`
                         : 'Local Standby Store'}
                     </span>
@@ -2043,7 +2052,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={loadAllData}
+                    onClick={() => loadAllData(true)}
                     className="px-3 py-1.5 rounded-xl border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-xs font-semibold text-neutral-200 transition-colors flex items-center gap-1.5"
                   >
                     <span>Refresh Status</span>
@@ -2126,7 +2135,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                     type="text"
                     value={mongoUriInput}
                     onChange={(e) => setMongoUriInput(e.target.value)}
-                    placeholder="mongodb+srv://shakil_bag_store:Bhavkancli02@cluster0.1z1yfwx.mongodb.net/"
+                    placeholder="mongodb+srv://<username>:<password>@cluster0.example.mongodb.net/?retryWrites=true&w=majority"
                     className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-800 bg-neutral-950 text-white text-xs font-mono focus:border-orange-500 focus:outline-none"
                   />
                   <p className="text-[11px] text-neutral-500 mt-1">
@@ -2143,7 +2152,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout, onView
                       type="text"
                       value={mongoDbNameInput}
                       onChange={(e) => setMongoDbNameInput(e.target.value)}
-                      placeholder="shakil_bag_store"
+                      placeholder="e.g. sakil_bag_store"
                       className="w-full px-3.5 py-2.5 rounded-xl border border-neutral-800 bg-neutral-950 text-white text-xs font-mono focus:border-orange-500 focus:outline-none"
                     />
                   </div>

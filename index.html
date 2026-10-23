@@ -4,19 +4,34 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
-      // Ignore benign Vite HMR WebSocket connection errors in cloud/iframe proxy
-      window.addEventListener('unhandledrejection', function(e) {
-        var msg = (e && e.reason && (e.reason.message || String(e.reason))) || '';
-        if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('vite') !== -1) {
-          e.preventDefault();
-        }
-      });
-      window.addEventListener('error', function(e) {
-        var msg = (e && (e.message || '')) || '';
-        if (msg.indexOf('WebSocket') !== -1) {
-          e.preventDefault();
-        }
-      });
+      (function() {
+        // Suppress benign Vite HMR WebSocket connection notices in cloud/iframe sandbox
+        var origConsoleError = console.error;
+        console.error = function() {
+          var firstArg = arguments[0];
+          var msg = typeof firstArg === 'string' ? firstArg : (firstArg && (firstArg.message || String(firstArg))) || '';
+          if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('[vite] failed to connect') !== -1) {
+            return;
+          }
+          origConsoleError.apply(console, arguments);
+        };
+
+        window.addEventListener('unhandledrejection', function(e) {
+          var msg = (e && e.reason && (e.reason.message || String(e.reason))) || '';
+          if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('vite') !== -1) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        });
+
+        window.addEventListener('error', function(e) {
+          var msg = (e && (e.message || '')) || '';
+          if (msg.indexOf('WebSocket') !== -1 || msg.indexOf('vite') !== -1) {
+            e.preventDefault();
+            e.stopPropagation();
+          }
+        });
+      })();
     </script>
     <title>SAKIL BAG STORE - Trolley Bag Repair & Parts Specialist Noida</title>
     <meta name="description" content="Professional trolley bag repair, trolley wheels replacement, handles, locks, luggage repair and customized bags in Sector 22, Noida. Run by Mohd Shakil." />

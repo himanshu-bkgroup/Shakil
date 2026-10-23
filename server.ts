@@ -762,13 +762,7 @@ app.post('/api/admin/logout', (req, res) => {
 async function startServer() {
   const isProd = process.env.NODE_ENV === 'production';
 
-  // Initialize MongoDB connection on boot (if configured via env or db-config)
-  try {
-    await initMongo();
-  } catch (err) {
-    console.warn('[Server] MongoDB initialization notice:', err);
-  }
-
+  // 1. Mount frontend routes and middleware
   if (isProd) {
     const distPath = path.resolve('dist');
     app.use(express.static(distPath));
@@ -789,8 +783,14 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
+  // 2. Start listening on port 3000 IMMEDIATELY so platform healthchecks pass in <100ms
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Server] SAKIL BAG STORE running on http://0.0.0.0:${PORT} (${isProd ? 'production' : 'development'})`);
+  });
+
+  // 3. Connect to MongoDB Atlas asynchronously in the background so boot is never delayed
+  initMongo().catch((err) => {
+    console.warn('[Server] MongoDB initialization notice:', err);
   });
 }
 
