@@ -1,6 +1,6 @@
 /**
  * Resilient API Client Helper
- * Handles baseURL detection, Netlify Serverless Functions, and prevents HTML doctype parse errors.
+ * Handles baseURL detection and prevents HTML doctype parse errors.
  */
 
 export function getApiUrl(endpoint: string): string {
@@ -32,57 +32,17 @@ export async function safeFetchJson<T = any>(
   try {
     res = await fetch(url, options);
     text = await res.text();
-  } catch (err: any) {
-    // If running on Netlify and standard /api/ failed, try Netlify serverless functions path
-    if (typeof window !== 'undefined' && window.location.hostname.includes('netlify.app')) {
-      try {
-        const netlifyFunctionUrl = `/.netlify/functions/api${cleanEndpoint}`;
-        const retryRes = await fetch(netlifyFunctionUrl, options);
-        const retryText = await retryRes.text();
-        if (!retryText.trim().startsWith('<')) {
-          const parsed = JSON.parse(retryText);
-          return {
-            ok: retryRes.ok,
-            status: retryRes.status,
-            data: parsed,
-            error: !retryRes.ok ? parsed?.message || 'API request error' : undefined,
-          };
-        }
-      } catch {
-        // Fall back gracefully
-      }
-    }
-
+  } catch {
     return {
       ok: false,
       status: 0,
-      error: 'Backend is synchronizing. Using built-in database state.',
+      error: 'Backend offline or static hosting. Using built-in database state.',
     };
   }
 
-  // Check if response is HTML (which happens when Netlify static redirects /* to /index.html)
+  // Check if response is HTML (which happens when static hosting redirects /* to /index.html)
   const trimmed = text.trim();
   if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html') || trimmed.startsWith('<?xml')) {
-    // Try Netlify function path if on Netlify
-    if (typeof window !== 'undefined' && window.location.hostname.includes('netlify.app')) {
-      try {
-        const netlifyFunctionUrl = `/.netlify/functions/api${cleanEndpoint}`;
-        const retryRes = await fetch(netlifyFunctionUrl, options);
-        const retryText = await retryRes.text();
-        if (!retryText.trim().startsWith('<')) {
-          const parsed = JSON.parse(retryText);
-          return {
-            ok: retryRes.ok,
-            status: retryRes.status,
-            data: parsed,
-            error: !retryRes.ok ? parsed?.message || 'API request error' : undefined,
-          };
-        }
-      } catch {
-        // Fall through
-      }
-    }
-
     return {
       ok: false,
       status: res ? res.status : 200,
