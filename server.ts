@@ -52,6 +52,16 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
+// Ensure MongoDB is connected for API requests (especially on serverless/Vercel)
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api') && !isMongoConnected()) {
+    try {
+      await initMongo();
+    } catch {}
+  }
+  next();
+});
+
 // Directories
 const DATA_DIR = path.resolve('data');
 const UPLOADS_DIR = path.resolve('public', 'uploads');
@@ -164,7 +174,7 @@ app.get('/uploads/:filename', async (req, res, next) => {
     }
   }
 
-  next();
+  return res.status(404).send('Image not found');
 });
 
 // Serve uploaded images statically with performance caching headers
@@ -648,8 +658,10 @@ app.post('/api/upload', async (req, res) => {
     const filename = `${safeBaseName}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
     const filePath = path.join(UPLOADS_DIR, filename);
 
-    // 1. Save to local disk for instantaneous serving
-    fs.writeFileSync(filePath, buffer);
+    // 1. Save to local disk if available for instantaneous serving
+    try {
+      fs.writeFileSync(filePath, buffer);
+    } catch {}
     const publicUrl = `/uploads/${filename}`;
 
     // 2. Real-time sync with MongoDB: Save uploaded image into MongoDB uploads collection
@@ -794,7 +806,11 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  console.error('[Server] Fatal error starting server:', err);
-  process.exit(1);
-});
+if (!process.env.VERCEL) {
+  startServer().catch((err) => {
+    console.error('[Server] Fatal error starting server:', err);
+    process.exit(1);
+  });
+}
+
+export default app;
