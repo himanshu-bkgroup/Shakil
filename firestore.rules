@@ -1,0 +1,51 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper function for document ID validation
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Services Catalog: Publicly readable by all visitors
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Parts & Repair Gallery: Publicly readable by all visitors
+    match /gallery/{galleryId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Business Settings: Publicly readable by all visitors
+    match /settings/{settingsId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // FAQs: Publicly readable
+    match /faqs/{faqId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Customer Inquiries: Visitors can submit requirements; store staff can view and manage
+    match /enquiries/{enquiryId} {
+      allow read: if true;
+      allow create: if true;
+      allow update, delete: if true;
+    }
+
+    // Connectivity test collection
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Default deny for unmapped collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

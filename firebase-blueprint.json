@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "Service": {
+      "title": "Service",
+      "description": "Repair service or parts offering at Sakil Bag Store",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "slug": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "image_url": { "type": "string", "maxLength": 500000 },
+        "active": { "type": "boolean" },
+        "display_order": { "type": "number" },
+        "whatsapp_template": { "type": "string", "maxLength": 2000 }
+      },
+      "required": ["id", "name", "slug"]
+    },
+    "GalleryItem": {
+      "title": "GalleryItem",
+      "description": "Photo of repair work or replacement parts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "image_url": { "type": "string", "maxLength": 500000 },
+        "title": { "type": "string", "maxLength": 200 },
+        "caption": { "type": "string", "maxLength": 500 },
+        "category": { "type": "string", "maxLength": 100 },
+        "alt_text": { "type": "string", "maxLength": 200 },
+        "display_order": { "type": "number" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "image_url", "title"]
+    },
+    "Enquiry": {
+      "title": "Enquiry",
+      "description": "Customer trolley repair requirement enquiry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "requirement_type": { "type": "string", "maxLength": 100 },
+        "message": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["NEW", "CONTACTED", "IN_PROGRESS", "COMPLETED", "CANCELLED"] },
+        "created_at": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "name", "phone", "requirement_type"]
+    },
+    "BusinessSettings": {
+      "title": "BusinessSettings",
+      "description": "Sakil Bag Store contact details, opening hours and store information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "business_name": { "type": "string", "maxLength": 200 },
+        "owner_name": { "type": "string", "maxLength": 200 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "whatsapp_number": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 200 },
+        "address": { "type": "string", "maxLength": 500 }
+      },
+      "required": ["id", "business_name", "phone"]
+    },
+    "FAQItem": {
+      "title": "FAQItem",
+      "description": "Frequently asked question regarding trolley repair in Noida",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "question": { "type": "string", "maxLength": 500 },
+        "answer": { "type": "string", "maxLength": 2000 },
+        "category": { "type": "string", "maxLength": 100 },
+        "display_order": { "type": "number" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["id", "question", "answer"]
+    }
+  },
+  "firestore": {
+    "/services/{serviceId}": {
+      "schema": "Service",
+      "description": "Public services catalog for trolley repair and parts"
+    },
+    "/gallery/{galleryId}": {
+      "schema": "GalleryItem",
+      "description": "Public gallery photos of spare parts and trolley repairs"
+    },
+    "/enquiries/{enquiryId}": {
+      "schema": "Enquiry",
+      "description": "Customer requirement inquiries"
+    },
+    "/settings/{settingsId}": {
+      "schema": "BusinessSettings",
+      "description": "Store profile and contact settings"
+    },
+    "/faqs/{faqId}": {
+      "schema": "FAQItem",
+      "description": "Store FAQs"
+    }
+  }
+}

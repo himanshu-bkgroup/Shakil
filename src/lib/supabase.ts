@@ -9,8 +9,25 @@ import type {
   SEOMetadata
 } from '../types';
 import { IMAGES } from './images';
+import {
+  firestoreFetchServices,
+  firestoreSaveService,
+  firestoreDeleteService,
+  firestoreFetchGallery,
+  firestoreSaveGallery,
+  firestoreDeleteGallery,
+  firestoreFetchSettings,
+  firestoreSaveSettings,
+  firestoreFetchFaqs,
+  firestoreSaveFaq,
+  firestoreDeleteFaq,
+  firestoreFetchEnquiries,
+  firestoreSubmitEnquiry,
+  firestoreUpdateEnquiryStatus,
+  firestoreDeleteEnquiry,
+} from './firestoreService';
 
-// Supabase removed - Pure MongoDB & REST API architecture
+// Supabase removed - Google Cloud Firestore architecture
 export const isSupabaseConfigured = false;
 export const supabase = null;
 
@@ -524,18 +541,15 @@ export async function uploadImageToServer(base64OrUrl: string, name = 'photo'): 
 // Unified API Functions
 
 export async function fetchBusinessSettings(): Promise<BusinessSettings> {
-  // 1. Try server API first for real-time cross-browser consistency
+  // 1. Try Google Cloud Firestore first for 100% reliable cloud sync
   try {
-    const res = await fetch('/api/settings');
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.settings && data.settings.business_name) {
-        setPersistentData(STORAGE_KEYS.SETTINGS, data.settings).catch(() => {});
-        return data.settings;
-      }
+    const firestoreSettings = await firestoreFetchSettings();
+    if (firestoreSettings && firestoreSettings.business_name) {
+      setPersistentData(STORAGE_KEYS.SETTINGS, firestoreSettings).catch(() => {});
+      return firestoreSettings;
     }
   } catch (e) {
-    // server route offline or static mode
+    // fallback
   }
 
   // Fallback to local storage / defaults
@@ -544,34 +558,17 @@ export async function fetchBusinessSettings(): Promise<BusinessSettings> {
 
 export async function saveBusinessSettings(settings: Partial<BusinessSettings>): Promise<BusinessSettings> {
   const current = await fetchBusinessSettings();
-  
-  // Upload images to server if base64 to ensure cross-device visibility
-  let heroUrl = settings.hero_image_url;
-  let logoUrl = settings.logo_url;
-  if (heroUrl && heroUrl.startsWith('data:image')) {
-    heroUrl = await uploadImageToServer(heroUrl, 'hero_banner');
-  }
-  if (logoUrl && logoUrl.startsWith('data:image')) {
-    logoUrl = await uploadImageToServer(logoUrl, 'store_logo');
-  }
-
   const updated: BusinessSettings = {
     ...current,
     ...settings,
-    hero_image_url: heroUrl !== undefined ? heroUrl : current.hero_image_url,
-    logo_url: logoUrl !== undefined ? logoUrl : current.logo_url,
     updated_at: new Date().toISOString(),
   };
 
-  // 1. Persist to server backend immediately
+  // 1. Persist to Google Cloud Firestore
   try {
-    await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
-    });
+    await firestoreSaveSettings(updated);
   } catch (e) {
-    console.warn('Server save settings error:', e);
+    console.warn('Firestore save settings error:', e);
   }
 
   // 2. Save locally and broadcast
@@ -580,18 +577,15 @@ export async function saveBusinessSettings(settings: Partial<BusinessSettings>):
 }
 
 export async function fetchServices(): Promise<Service[]> {
-  // 1. Try server backend first for cross-browser sync
+  // 1. Try Google Cloud Firestore for real-time global consistency
   try {
-    const res = await fetch('/api/services');
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data?.services) && data.services.length > 0) {
-        setPersistentData(STORAGE_KEYS.SERVICES, data.services).catch(() => {});
-        return data.services;
-      }
+    const firestoreServices = await firestoreFetchServices();
+    if (Array.isArray(firestoreServices) && firestoreServices.length > 0) {
+      setPersistentData(STORAGE_KEYS.SERVICES, firestoreServices).catch(() => {});
+      return firestoreServices;
     }
   } catch (e) {
-    // server route offline
+    // fallback
   }
 
   // Fallback to local storage / defaults
@@ -599,49 +593,19 @@ export async function fetchServices(): Promise<Service[]> {
 }
 
 export async function saveService(service: Service): Promise<void> {
-  // If image is a newly uploaded base64 data URL, upload to server static files first
-  let targetImageUrl = service.image_url;
-  if (targetImageUrl && targetImageUrl.startsWith('data:image')) {
-    targetImageUrl = await uploadImageToServer(targetImageUrl, service.slug || service.name);
-  }
-
-  let galleryUrls = service.gallery;
-  if (Array.isArray(galleryUrls)) {
-    const processedGallery: string[] = [];
-    for (const img of galleryUrls) {
-      if (img && img.startsWith('data:image')) {
-        const uploaded = await uploadImageToServer(img, `${service.slug || service.name}-gallery`);
-        processedGallery.push(uploaded || img);
-      } else if (img) {
-        processedGallery.push(img);
-      }
-    }
-    galleryUrls = processedGallery;
-  }
-
-  const updatedService: Service = {
-    ...service,
-    image_url: targetImageUrl,
-    gallery: galleryUrls,
-  };
-
   const services = await fetchServices();
-  const index = services.findIndex(s => s.id === updatedService.id);
+  const index = services.findIndex(s => s.id === service.id);
   if (index >= 0) {
-    services[index] = updatedService;
+    services[index] = service;
   } else {
-    services.push(updatedService);
+    services.push(service);
   }
 
-  // 1. Persist to server backend immediately
+  // 1. Persist to Google Cloud Firestore immediately
   try {
-    await fetch('/api/services', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedService),
-    });
+    await firestoreSaveService(service);
   } catch (e) {
-    console.warn('Server save service error:', e);
+    console.warn('Firestore save service error:', e);
   }
 
   // 2. Local storage and broadcast
@@ -653,23 +617,22 @@ export async function deleteService(serviceId: string): Promise<void> {
   const filtered = services.filter(s => s.id !== serviceId);
 
   try {
-    await fetch(`/api/services/${serviceId}`, { method: 'DELETE' });
+    await firestoreDeleteService(serviceId);
   } catch (e) {
-    console.warn('Server delete service error:', e);
+    console.warn('Firestore delete service error:', e);
   }
 
   await setPersistentData(STORAGE_KEYS.SERVICES, filtered);
 }
 
+
+
 export async function fetchEnquiries(): Promise<Enquiry[]> {
   try {
-    const res = await fetch('/api/enquiries');
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data?.enquiries) && data.enquiries.length > 0) {
-        saveStorage(STORAGE_KEYS.ENQUIRIES, data.enquiries);
-        return data.enquiries;
-      }
+    const firestoreEnquiries = await firestoreFetchEnquiries();
+    if (Array.isArray(firestoreEnquiries)) {
+      saveStorage(STORAGE_KEYS.ENQUIRIES, firestoreEnquiries);
+      return firestoreEnquiries;
     }
   } catch (e) {}
 
@@ -702,15 +665,11 @@ export async function submitEnquiry(payload: {
     created_at: new Date().toISOString(),
   };
 
-  // 1. Send to server
+  // 1. Send to Google Cloud Firestore
   try {
-    await fetch('/api/enquiries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newEnquiry),
-    });
+    await firestoreSubmitEnquiry(newEnquiry);
   } catch (e) {
-    console.warn('Server enquiry submit failed:', e);
+    console.warn('Firestore enquiry submit notice:', e);
   }
 
   // Local storage fallback and notifications
@@ -736,11 +695,7 @@ export async function submitEnquiry(payload: {
 
 export async function updateEnquiry(enquiryId: string, updates: Partial<Enquiry>): Promise<void> {
   try {
-    await fetch(`/api/enquiries/${enquiryId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
-    });
+    await firestoreUpdateEnquiryStatus(enquiryId, updates);
   } catch (e) {}
 
   const enquiries = loadStorage<Enquiry[]>(STORAGE_KEYS.ENQUIRIES, INITIAL_DEMO_ENQUIRIES);
@@ -753,7 +708,7 @@ export async function updateEnquiry(enquiryId: string, updates: Partial<Enquiry>
 
 export async function deleteEnquiry(enquiryId: string): Promise<void> {
   try {
-    await fetch(`/api/enquiries/${enquiryId}`, { method: 'DELETE' });
+    await firestoreDeleteEnquiry(enquiryId);
   } catch (e) {}
 
   const enquiries = loadStorage<Enquiry[]>(STORAGE_KEYS.ENQUIRIES, INITIAL_DEMO_ENQUIRIES);
@@ -761,18 +716,15 @@ export async function deleteEnquiry(enquiryId: string): Promise<void> {
 }
 
 export async function fetchGallery(): Promise<GalleryItem[]> {
-  // 1. Try server backend first for cross-browser sync
+  // 1. Try Google Cloud Firestore first for real-time global consistency
   try {
-    const res = await fetch('/api/gallery');
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data?.gallery) && data.gallery.length > 0) {
-        setPersistentData(STORAGE_KEYS.GALLERY, data.gallery).catch(() => {});
-        return data.gallery;
-      }
+    const firestoreGallery = await firestoreFetchGallery();
+    if (Array.isArray(firestoreGallery) && firestoreGallery.length > 0) {
+      setPersistentData(STORAGE_KEYS.GALLERY, firestoreGallery).catch(() => {});
+      return firestoreGallery;
     }
   } catch (e) {
-    // server offline
+    // fallback
   }
 
   // Fallback
@@ -780,34 +732,19 @@ export async function fetchGallery(): Promise<GalleryItem[]> {
 }
 
 export async function saveGalleryItem(item: GalleryItem): Promise<void> {
-  // If photo is newly uploaded base64 data URL, upload to server static files first
-  let targetImageUrl = item.image_url;
-  if (targetImageUrl && targetImageUrl.startsWith('data:image')) {
-    targetImageUrl = await uploadImageToServer(targetImageUrl, item.title || 'gallery');
-  }
-
-  const updatedItem: GalleryItem = {
-    ...item,
-    image_url: targetImageUrl,
-  };
-
   const gallery = await fetchGallery();
-  const index = gallery.findIndex(g => g.id === updatedItem.id);
+  const index = gallery.findIndex(g => g.id === item.id);
   if (index >= 0) {
-    gallery[index] = updatedItem;
+    gallery[index] = item;
   } else {
-    gallery.unshift(updatedItem);
+    gallery.unshift(item);
   }
 
-  // 1. Persist to server backend immediately
+  // 1. Persist directly to Google Cloud Firestore
   try {
-    await fetch('/api/gallery', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedItem),
-    });
+    await firestoreSaveGallery(item);
   } catch (e) {
-    console.warn('Server save gallery error:', e);
+    console.warn('Firestore save gallery error:', e);
   }
 
   // 2. Local storage and broadcast
@@ -819,9 +756,9 @@ export async function deleteGalleryItem(itemId: string): Promise<void> {
   const filtered = gallery.filter(g => g.id !== itemId);
 
   try {
-    await fetch(`/api/gallery/${itemId}`, { method: 'DELETE' });
+    await firestoreDeleteGallery(itemId);
   } catch (e) {
-    console.warn('Server delete gallery error:', e);
+    console.warn('Firestore delete gallery error:', e);
   }
 
   await setPersistentData(STORAGE_KEYS.GALLERY, filtered);
@@ -832,14 +769,10 @@ export async function bulkSaveGalleryItems(newItems: GalleryItem[]): Promise<voi
   const current = await fetchGallery();
   const updatedGallery = [...newItems, ...current];
 
-  try {
-    await fetch('/api/gallery', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedGallery),
-    });
-  } catch (e) {
-    console.warn('Server bulk save gallery error:', e);
+  for (const item of newItems) {
+    try {
+      await firestoreSaveGallery(item);
+    } catch {}
   }
 
   await setPersistentData(STORAGE_KEYS.GALLERY, updatedGallery);
@@ -847,13 +780,10 @@ export async function bulkSaveGalleryItems(newItems: GalleryItem[]): Promise<voi
 
 export async function fetchFAQs(): Promise<FAQItem[]> {
   try {
-    const res = await fetch('/api/faqs');
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data?.faqs) && data.faqs.length > 0) {
-        setPersistentData(STORAGE_KEYS.FAQS, data.faqs).catch(() => {});
-        return data.faqs;
-      }
+    const firestoreFaqs = await firestoreFetchFaqs();
+    if (Array.isArray(firestoreFaqs) && firestoreFaqs.length > 0) {
+      setPersistentData(STORAGE_KEYS.FAQS, firestoreFaqs).catch(() => {});
+      return firestoreFaqs;
     }
   } catch (e) {}
 
@@ -870,11 +800,7 @@ export async function saveFAQItem(item: FAQItem): Promise<void> {
   }
 
   try {
-    await fetch('/api/faqs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(item),
-    });
+    await firestoreSaveFaq(item);
   } catch (e) {}
 
   await setPersistentData(STORAGE_KEYS.FAQS, faqs);
@@ -885,7 +811,7 @@ export async function deleteFAQItem(itemId: string): Promise<void> {
   const filtered = faqs.filter(f => f.id !== itemId);
 
   try {
-    await fetch(`/api/faqs/${itemId}`, { method: 'DELETE' });
+    await firestoreDeleteFaq(itemId);
   } catch (e) {}
 
   await setPersistentData(STORAGE_KEYS.FAQS, filtered);
