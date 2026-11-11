@@ -87,27 +87,27 @@ export default function App() {
   useEffect(() => {
     if (!settings) return;
 
-    let title = `${settings.business_name} - Trolley Bag Repair & Parts Specialist Noida`;
-    let desc = `Professional trolley bag repair, trolley wheels replacement, handles, locks, luggage repair and customized bags in Sector 22, Noida. Run by Mohd Shakil.`;
+    let title = `Bag Repairing Shop in Sector 22 Noida | SAKIL BAG STORE - Trolley & Bag Repair`;
+    let desc = `Best Bag Repairing Shop in Sector 22 Noida. Specialist repair for backpacks, trolley wheels, telescopic handles, zippers, locks & luggage repair. Mohd Shakil · Chaura Raghunathpur Sec 22 Noida.`;
 
     if (currentPath.includes('trolley-wheel-repair-noida')) {
-      title = `Trolley Wheel Repair & Replacement in Noida | Sakil Bag Store`;
+      title = `Trolley Wheel Repair & Replacement in Noida Sector 22 | Sakil Bag Store`;
       desc = `Broken trolley wheels? We provide precision 360-degree dual spinner wheels, 40mm-70mm PU wheels & axles in Sector 22, Noida. Run by Mohd Shakil.`;
     } else if (currentPath.includes('trolley-handle-repair-noida')) {
-      title = `Trolley Handle Repair & Replacement in Noida | Sakil Bag Store`;
+      title = `Trolley Handle Repair & Replacement in Noida Sector 22 | Sakil Bag Store`;
       desc = `Telescopic pull-up trolley handle repairs, internal aluminum tubes, top and side handles in Sector 22, Noida.`;
     } else if (currentPath.includes('trolley-bag-repair-noida')) {
-      title = `Trolley Bag Repair in Noida | Sakil Bag Store`;
+      title = `Trolley Bag Repair in Noida Sector 22 | Sakil Bag Store`;
       desc = `Complete trolley bag repair in Sector 22, Noida: broken wheels, jammed telescopic handles, luggage locks, and zip track repair.`;
     } else if (currentPath.includes('trolley-bag-locks-noida')) {
-      title = `Trolley & Luggage Locks in Noida | Sakil Bag Store`;
+      title = `Trolley & Luggage Locks in Noida Sector 22 | Sakil Bag Store`;
       desc = `Replacement 3-digit combination locks, TSA-type luggage hardware, zipper lock clasps in Sector 22, Noida.`;
     } else if (currentPath.includes('trolley-parts-supplier-noida')) {
-      title = `Trolley Parts Supplier in Noida | Sakil Bag Store`;
+      title = `Trolley Parts Supplier in Noida Sector 22 | Sakil Bag Store`;
       desc = `Supplier of replacement trolley wheels, telescopic handles, locks, luggage hardware and spare parts in Noida.`;
     } else if (currentPath.includes('bag-repair-noida')) {
-      title = `Bag Repair in Noida | Sakil Bag Store`;
-      desc = `Backpack repair, travel bag repair, zip slider replacement, and heavy-duty seam stitching in Sector 22, Noida.`;
+      title = `Bag Repairing Shop in Sector 22 Noida | Backpack & Zipper Repair`;
+      desc = `Best bag repairing shop in Sec 22 Noida. Backpack repair, school bag stitching, laptop bag zip runner replacement, and duffle repair in Sector 22, Noida.`;
     } else if (currentPath.includes('luggage-repair-noida')) {
       title = `Luggage Repair in Noida | Sakil Bag Store`;
       desc = `Hard-shell suitcase repair, luggage spinners, corner bumpers, and trolley repairs in Sector 22, Noida.`;

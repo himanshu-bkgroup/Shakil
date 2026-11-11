@@ -42,7 +42,9 @@ export const ServiceCard: React.FC<ServiceCardProps> = ({
         <div className="relative h-48 w-full overflow-hidden bg-neutral-950">
           <img
             src={service.image_url}
-            alt={service.name}
+            alt={`${service.name} - Sakil Bag Store Sector 22 Noida`}
+            loading="lazy"
+            decoding="async"
             referrerPolicy="no-referrer"
             className="h-full w-full object-cover object-center filter brightness-90 group-hover:scale-105 transition-transform duration-500"
           />

@@ -56,22 +56,22 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             {/* Store NAP Trust Kicker */}
             <div className="inline-flex items-center gap-2 rounded-full border border-neutral-800 bg-neutral-900/90 px-3.5 py-1.5 text-xs text-neutral-300">
               <span className="flex h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Direct Workshop · Mohd Shakil · Sector 22, Noida</span>
+              <span>Bag Repairing Shop in Sec 22 Noida · Mohd Shakil Workshop</span>
             </div>
 
             {/* Main Heading */}
             <h1 className="font-heading text-3xl sm:text-5xl lg:text-5xl font-extrabold tracking-tight text-white text-balance leading-[1.15]">
-              Trolley Bag Repair & Parts Specialist in Noida
+              Bag Repairing Shop in Sector 22, Noida
             </h1>
 
             {/* Subheading */}
             <div className="text-sm sm:text-base font-semibold text-orange-400 tracking-wide">
-              Bag Repair · Trolley Wheels · Trolley Parts · Luggage Repair · Customized Bags
+              Trolley Bag Repair · Trolley Wheels Replacement · Luggage Zipper & Handle Specialist
             </div>
 
             {/* Supporting Text */}
             <p className="text-sm sm:text-base text-neutral-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed">
-              Professional solutions for trolley repair, replacement parts, luggage repair, bag repair and customized bag requirements in Sector 22, Noida.
+              Looking for a trusted <strong className="text-white font-semibold">bag repairing shop in Sec 22 Noida</strong>? SAKIL BAG STORE provides immediate repairs for school backpacks, laptop bags, travel trolley wheels, telescopic handles, locks, runners, and custom bag requirements at Chaura Raghunathpur, Sector 22, Noida.
             </p>
 
             {/* Action Buttons */}
@@ -133,7 +133,9 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
               <div className="overflow-hidden rounded-xl relative">
                 <img
                   src={settings.hero_image_url || IMAGES.hero}
-                  alt="Trolley Bag Repair Workshop Sakil Bag Store Noida"
+                  alt="Bag Repairing Shop in Sector 22 Noida - Sakil Bag Store Workshop"
+                  loading="eager"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   className="w-full h-80 sm:h-96 object-cover object-center filter brightness-95 transform transition-transform duration-700 group-hover:scale-105"
                 />

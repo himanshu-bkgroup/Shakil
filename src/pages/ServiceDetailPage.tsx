@@ -218,13 +218,13 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
 
       case 'bag-repair-noida':
         return {
-          title: matchingService?.name || 'Bag Repair in Noida',
-          seoTitle: 'Bag Repair in Noida | Sakil Bag Store',
-          h1: matchingService?.name || 'Bag Repair in Noida',
-          subtitle: matchingService?.description || 'Expert repair of backpacks, laptop bags, travel duffles, gym bags, zippers, and heavy stitching in Sector 22, Noida.',
+          title: matchingService?.name || 'Bag Repairing Shop in Sector 22 Noida',
+          seoTitle: 'Bag Repairing Shop in Sector 22 Noida | Backpack & Zipper Repair - Sakil Bag Store',
+          h1: 'Bag Repairing Shop in Sector 22, Noida',
+          subtitle: matchingService?.description || 'Expert repair of backpacks, laptop bags, travel duffles, gym bags, zippers, and heavy stitching at Chaura Raghunathpur, Sector 22, Noida.',
           heroImage: customImage || IMAGES.bagRepair,
           requirementCategory: 'Bag Repair',
-          breadcrumbs: ['Home', 'Services', 'Bag Repair'],
+          breadcrumbs: ['Home', 'Services', 'Bag Repairing Shop Sec 22'],
           keyPoints: [
             'Zipper slider (runner) replacement on the spot',
             'Full zipper track replacement with industrial thread',
@@ -410,7 +410,9 @@ export const ServiceDetailPage: React.FC<ServiceDetailPageProps> = ({
               <div className="overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900 shadow-xl relative">
                 <img
                   src={page.heroImage}
-                  alt={page.title}
+                  alt={`${page.title} - Sakil Bag Store Sector 22 Noida`}
+                  loading="eager"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   className="h-64 sm:h-72 w-full object-cover object-center filter brightness-95"
                 />

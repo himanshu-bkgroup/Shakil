@@ -93,6 +93,8 @@ export const GalleryPage: React.FC<GalleryPageProps> = ({
                 <img
                   src={item.image_url}
                   alt={item.alt_text || item.title}
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                   className="h-full w-full object-cover object-center filter brightness-90 group-hover:scale-105 transition-transform duration-500"
                 />
